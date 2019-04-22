@@ -59,7 +59,7 @@ program hello
 
       ! Print status message
       
-      write(*,*) "I am the master of all: I have pi to be", pi_approx
+      write(*,*) "I am processor zero: I have pi to be", pi_approx
 
   end if
 
