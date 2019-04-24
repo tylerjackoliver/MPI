@@ -1,0 +1,2 @@
+ Time required:  1.010894775390625E-4
+Application 34604453 resources: utime ~1s, stime ~1s, Rss ~5100, inblocks ~11701, outblocks ~22605

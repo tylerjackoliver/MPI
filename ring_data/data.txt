@@ -1,0 +1,18 @@
+1
+ Time required:  8.8214874267578125E-6
+Application 34604488 resources: utime ~0s, stime ~0s, Rss ~5100, inblocks ~9101, outblocks ~22603
+2
+ Time required:  1.21593475341796875E-5
+Application 34604490 resources: utime ~0s, stime ~0s, Rss ~5100, inblocks ~9214, outblocks ~22603
+4
+ Time required:  1.40666961669921875E-5
+Application 34604492 resources: utime ~0s, stime ~0s, Rss ~5100, inblocks ~9440, outblocks ~22603
+8
+ Time required:  2.40802764892578125E-5
+Application 34604495 resources: utime ~0s, stime ~0s, Rss ~5100, inblocks ~9892, outblocks ~22603
+16
+ Time required:  7.1048736572265625E-5
+Application 34604498 resources: utime ~0s, stime ~1s, Rss ~5100, inblocks ~10797, outblocks ~22604
+24
+ Time required:  1.08003616333007812E-4
+Application 34604499 resources: utime ~0s, stime ~1s, Rss ~5100, inblocks ~11701, outblocks ~22605
