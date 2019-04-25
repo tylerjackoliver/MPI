@@ -8,7 +8,9 @@
 program main
 
     use neighbour_indexes
+    use utility_functions                                   ! Contains non-mpi subroutiens used below
     use mpi                                                 ! Use MPI library
+    use mpi_wrappers                                        ! Contains MPI wrappers overloaded to number of dimensions
     use pgmio                                               ! Use .pgm reading library
 
     implicit none
@@ -39,7 +41,7 @@ program main
 
     double precision, allocatable       :: old      (:,:)   ! "old" array: for iteration
     double precision, allocatable       :: buf      (:,:)   ! Buffer_array: initial read-in location
-    double precision, allocatable       :: new(:,:)   ! "new" array: for iteration
+    double precision, allocatable       :: new      (:,:)   ! "new" array: for iteration
     double precision, allocatable       :: edge     (:,:)   ! Array containing edge values
     double precision, allocatable       :: masterbuf(:,:)   ! Data array for rank 0
 
@@ -117,7 +119,7 @@ program main
 
     ! Step 0: Initialise the cartesian topology
 
-    call initialise_standard_topology_1d(pool_size, comm, cart_comm, rank, nbrs)
+    call mpi_initialise_standard_topology(num_dims, pool_size, comm, cart_comm, rank, nbrs)
 
     ! Step 1: read the edges data file into the buffer
 
@@ -129,14 +131,12 @@ program main
 
     ! Now we've read it on the master thread, time to scatter to all procs
 
-    call mpi_send_data_1d(masterbuf, Mp*Np, buf, Mp * Np, cart_comm)
+    call mpi_send_data(num_dims, masterbuf, Mp*Np, buf, Mp * Np, cart_comm)
 
     ! Step 2: Copy arrays
 
     call print_onrank0("Initialising arrays...", rank)
-
     call array_copy(edge(1:Mp, 1:Np), buf(1:Mp, 1:Np))
-
     call array_init(old, 255.d0)
 
     ! Step 3: Iterate through our edges
@@ -149,7 +149,7 @@ program main
 
         ! We first need to send the halos to/from the left and right processes
 
-        call send_halos_1d(old, Np, M, nbrs, cart_comm)
+        call mpi_send_halos(num_dims, old, Np, M, nbrs, cart_comm)
 
         delta = 0
 
@@ -210,310 +210,5 @@ program main
 
     call MPI_FINALIZE(ierr)
 
-contains 
-
-subroutine get_average(array, M, N, comm, average)
-
-    double precision, dimension(:,:), intent(in)    :: array 
-
-    integer,                          intent(in)    :: comm
-    integer,                          intent(in)    :: M
-    integer,                          intent(in)    :: N
-
-    double precision,                 intent(out)   :: average
-
-    integer                                         :: ierr
-
-    double precision                                :: local_sum
-    
-    local_sum = sum(array)
-
-    call MPI_ALLREDUCE(local_sum, average, 1, MPI_DOUBLE_PRECISION, MPI_SUM, comm, ierr)
-
-    average = local_sum / ( M * N )
-
-end subroutine get_average
-
-
-subroutine get_local_delta(newval, oldval, loc_delta)
-
-    double precision, dimension(:,:), intent(in)    :: newval
-    double precision, dimension(:,:), intent(in)    :: oldval 
-
-    double precision,                 intent(out)   :: loc_delta
-
-    integer                                         :: i, j
-    integer                                         :: dims(2)
-
-    double precision                                :: temp
-
-    dims = shape(newval)
-    loc_delta = 0
-
-    ! Altered loop variables based on zero-indexing
-
-    do j = 2, dims(2)-1
-
-        do i = 2, dims(1)-1
-
-            temp = abs(newval(i, j) - oldval(i, j))
-
-            if (temp > loc_delta) then
-
-                loc_delta = temp
-
-            end if
-
-        end do
-        
-    end do
-
-end subroutine get_local_delta
-
-
-subroutine get_global_delta(delta, comm, global_delta)
-
-    
-    double precision,                 intent(in)    :: delta
-
-    integer,                          intent(in)    :: comm 
-
-    double precision,                 intent(out)   :: global_delta
-
-    integer                                         :: ierr
-
-    call MPI_ALLREDUCE(delta, global_delta, 1, MPI_DOUBLE_PRECISION, &
-                       MPI_MAX, comm, ierr)
-
-end subroutine get_global_delta
-
-
-subroutine print_average_max(average, delta, num_iters, rank)
-
-    double precision, intent(in)         :: average
-
-    integer,      intent(in) :: num_iters
-    integer,      intent(in) :: rank 
-
-    double precision, intent(in) :: delta
-
-    if (rank .eq. 0) then
-
-        print '(A, I6, A, F5.1, A, F6.3)', "After ", num_iters, &
-                                           " iterations the average is ", &
-                                           average, " and the delta is ", delta
-
-    end if
-
-end subroutine print_average_max
-
-
-subroutine get_array_element_1d(new, old, edge, i, j)
-    
-    double precision, dimension(:,:), intent(inout) :: new
-
-    double precision, dimension(:,:), intent(in)    :: old
-    double precision, dimension(:,:), intent(in)    :: edge
-
-    integer,                          intent(in)    :: i
-    integer,                          intent(in)    :: j
-
-    double precision                                :: frac = .25d0
-    
-    double precision                                :: temp_sum
-    
-    temp_sum = old(i-1, j) + old(i+1, j) + old(i, j+1) +  old(i, j-1)
-
-    new(i, j) = frac * ( temp_sum - edge(i, j) )
-
-end subroutine get_array_element_1d
-
-
-subroutine array_copy(new, old)
-
-    double precision, dimension(:,:), intent(inout) :: new
-    double precision, dimension(:,:), intent(in)    :: old
-
-    integer                                         :: dims_new(2)
-    integer                                         :: dims_old(2)
-
-    integer                                         :: i, j
-
-    dims_new = shape(new)
-    dims_old = shape(old)
-
-    if ( (dims_new(1) .ne. dims_old(1)) .OR. (dims_new(2) .ne. dims_old(2)) ) then
-
-        call MPI_FINALIZE(ierr)
-        error stop "Error: tried to array_copy but the dimensions didn't match."
-
-    end if
-
-    ! Use array slicing for now
-
-    do j = 1, dims_new(2)
-
-        do i = 1,dims_new(1)
-
-            new(i, j) = old(i, j)
-
-        end do
-
-    end do
-
-end subroutine array_copy
-
-
-subroutine initialise_standard_topology_1d(pool_size, old_comm, new_comm, new_rank, nbrs)
-    
-    use neighbour_indexes                   ! Provides standardised values of left, right
-
-    integer, intent(in)                     :: pool_size
-    integer, intent(in)                     :: old_comm
-
-    integer, intent(out)                    :: new_comm
-    integer, intent(out)                    :: new_rank
-    integer, intent(inout), dimension(:)    :: nbrs
-
-    integer, parameter                      :: num_dims = 1
-    integer                                 :: dims(1)
-    integer                                 :: ierr
-    integer                                 :: x_dir 
-    integer                                 :: displacement
-
-    logical                                 :: periodic(1)
-    logical                                 :: reorder(1)
-
-    reorder = .false.
-
-    ! Set dims to zero and periodic to false
-
-    do i = 1, num_dims
-
-        periodic(i) = .false.
-        dims(i)     = 0
-
-    end do
-
-    x_dir = 0
-    displacement = 1
-    
-    ! Now create the topology
-
-    call MPI_DIMS_CREATE(pool_size, num_dims, dims, ierr)
-    call MPI_CART_CREATE(comm, num_dims, dims, periodic, reorder, cart_comm, ierr)
-    call MPI_COMM_RANK(cart_comm, rank, ierr)
-    call MPI_CART_SHIFT(cart_comm, x_dir, displacement, nbrs(left), nbrs(right), ierr)
-
-end subroutine initialise_standard_topology_1d
-
-
-subroutine array_init(array, init_val)
-
-    double precision, dimension(:, :), intent(inout):: array
-    double precision,                  intent(in)   :: init_val
-
-    integer                                         :: dims(2)
-    integer                                         :: i, j
-
-    dims = shape(array)
-
-    do j = 1, dims(2)
-
-        do i = 1, dims(1)
-
-            array(i, j) = init_val
-
-        end do
-
-    end do
-
-end subroutine array_init
-
-
-subroutine mpi_send_data_1d(to_send, size_to_send, to_recv, size_to_recv, comm)
-
-    double precision, dimension(:,:), intent(in)    :: to_send
-    
-    integer,                          intent(in)    :: size_to_send
-    
-    double precision, dimension(:,:), intent(inout) :: to_recv
-
-    integer,                          intent(in)    :: size_to_recv
-    integer,                          intent(in)    :: comm
-
-    call MPI_SCATTER(to_send, size_to_send, MPI_DOUBLE_PRECISION, to_recv, &
-                     size_to_recv, MPI_DOUBLE_PRECISION, 0, comm, ierr)
-
-end subroutine mpi_send_data_1d
-
-
-subroutine print_onrank0(msg, rank)
-
-    character(*), intent(in)    :: msg
-    integer,      intent(in)    :: rank
-
-    if (rank .eq. 0) then
-
-        print *, msg
-
-    end if
-
-end subroutine print_onrank0
-
-
-subroutine send_halos_1d(old, Np, M, nbrs, cart_comm)
-
-    use neighbour_indexes
-
-    double precision, dimension(0:,0:), intent(inout)   :: old
-
-    integer,                          intent(in)        :: Np
-    integer,                          intent(in)        :: M
-    integer,          dimension(:),   intent(in)        :: nbrs
-    integer,                          intent(in)        :: cart_comm
-
-    integer, dimension(mpi_status_size)                 :: recv_status      ! Receive status, non-blocking send
-
-    integer                                             :: ierr
-
-    ! Send/recv right
-
-    call MPI_SENDRECV(old(1, Np), M, MPI_DOUBLE, nbrs(right), 0, &
-    old(1,0), M, MPI_DOUBLE, nbrs(left), 0, cart_comm, &
-    recv_status, ierr)
-
-    ! Send/recv left
-
-    call MPI_SENDRECV(old(1, 1), M, MPI_DOUBLE, nbrs(left), 0, &
-    old(1, Np+1), M, MPI_DOUBLE, nbrs(right), 0, cart_comm, &
-    recv_status, ierr)
-
-end subroutine send_halos_1d
-
-
-
-subroutine gather_data(to_send, send_size, to_recv, recv_size, comm)
-
-    double precision, dimension(:,:), intent(in)        :: to_send
-
-    integer,                          intent(in)        :: send_size
-    
-    double precision, dimension(:,:), intent(out)       :: to_recv
-
-    integer,                          intent(in)        :: recv_size
-    integer,                          intent(in)        :: comm
-
-    integer, dimension(mpi_status_size)                 :: recv_status      ! Receive status, non-blocking send
-
-    integer                                             :: ierr
-
-    call MPI_GATHER(to_send, send_size, MPI_DOUBLE_PRECISION, to_recv, recv_size,&
-                    MPI_DOUBLE_PRECISION, 0, comm, ierr)
-
-end subroutine gather_data
-
-
-
-end program
+end program main
 
