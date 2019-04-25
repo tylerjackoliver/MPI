@@ -5,7 +5,7 @@ SRC_DIRS ?= ./src
 
 # Macros for CC
 FC = mpif90
-CFLAGS = -pedantic -Wall
+CFLAGS = -Wall
 
 # Directories
 SRCS := $(shell find $(SRC_DIRS) -name *.f90)
