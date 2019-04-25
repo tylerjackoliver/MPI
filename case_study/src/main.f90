@@ -1,7 +1,9 @@
 !
 ! Jack Tyler: Image re/de-composition code; serial version.
 !
- 
+! Modified 25/4 to compute the average value of the numbers every 10% of iterations.
+! Modified 25/4 to cease computation whenever the difference slips below 0.1.
+!
 
 program main
 
@@ -21,9 +23,14 @@ program main
     integer                             :: i                ! Loop variables
     integer                             :: j                ! Loop variables
     integer                             :: k                ! Loop variables
+    
+    integer                             :: num_iters
+    integer                             :: local_sum
 
-    integer, parameter                  :: num_iters = 10000 ! Number of iterations of jacobi
+    integer, parameter                  :: max_iters = 1000000 ! Number of iterations of jacobi
     integer, parameter                  :: P = 2            ! Number of cores
+
+    integer, parameter                  :: check_int = 100
 
     !
     ! PGM data arrays
@@ -36,6 +43,11 @@ program main
     double precision, allocatable       :: masterbuf(:,:)   ! Data array for rank 0
 
     double precision, parameter         :: frac = .25d0     ! Optimisation: compute fraction
+
+    double precision                    :: delta_global = 10! Delta flag: set unnecessarily high
+
+    double precision                    :: delta = 100
+    double precision                    :: temp
 
     !
     ! MPI variable initialisation
@@ -62,6 +74,8 @@ program main
     
     integer, parameter                  :: x_dir = 0        ! What direction is +x?
     integer, parameter                  :: displacement = 1 ! Displacement for cart. top.
+
+    integer                             :: average
 
     logical                             :: reorder          ! Are we to reorder the dims?
     logical, allocatable                :: periodic(:)      ! Logical array for periodic BCs
@@ -149,7 +163,11 @@ program main
 
     ! Step 2: loop over M, N
 
-    write(*,*) "Setting up arrays..."
+    if (rank .eq. 0) then
+
+        write(*,*) "Setting up arrays..."
+
+    end if
 
     do j = 1, Np
 
@@ -162,11 +180,17 @@ program main
 
     end do
 
-    write(*,*) "Iterating..."
+    if (rank .eq. 0) then
+
+        write(*,*) "Iterating..."
+
+    end if
 
     ! Step 3: Iterate through our edges
 
-    do k = 1, num_iters
+    num_iters = 0
+
+    do while (delta_global > 0.1 .and. num_iters < max_iters)
 
         ! We first need to send the halos from the left and right processes
 
@@ -184,23 +208,71 @@ program main
 
         call MPI_WAIT(request, recv_status, ierr)
 
-        do j = 1, Np
+        if (mod(num_iters, check_int) .eq. 0) then
 
-            do i = 1, Mp ! Column major
+             delta = 0
 
-                new_array(i, j) = frac * ( old(i-1, j) + &
-                    old(i+1, j) + old(i, j+1) + &
-                    old(i, j-1) - edge(i, j) )
+             do j = 1, Np
+
+                 do i = 1, Mp ! Column major
+
+                     new_array(i, j) = frac * ( old(i-1, j) + &
+                         old(i+1, j) + old(i, j+1) + &
+                         old(i, j-1) - edge(i, j) )
+
+                     ! Compute the local delta: get the difference between the old and new array
+                     temp = abs(new_array(i, j) - old(i, j))
+
+                     if (temp > delta) then
+
+                         delta = temp
+
+                     end if
+
+                 end do
+
+             end do
+
+             ! Bias delta againt size of array
+
+             call MPI_ALLREDUCE(delta, delta_global, 1, MPI_DOUBLE_PRECISION, MPI_SUM, comm, ierr)
+            
+            if (rank .eq. 0) then
+
+                print *, "Total delta:", delta_global, "number of iterations", num_iters
+                print *, "Average is:", average
+
+            end if
+
+
+        else
+         
+            do j = 1, Np
+
+                 do i = 1, Mp ! Column major
+
+                 new_array(i, j) = frac * ( old(i-1, j) + &
+                     old(i+1, j) + old(i, j+1) + &
+                     old(i, j-1) - edge(i, j) )
+
+
+                 end do
 
             end do
 
-        end do
+        end if
 
         old(1:Mp, 1:Np) = new_array(1:Mp, 1:Np)      ! Set old = new, excluding halos
 
+        num_iters = num_iters + 1
+
     end do
 
-    write(*,*) "Done! Copying back..."
+    if (rank .eq. 0) then
+
+        write(*,*) "Done! After", num_iters, "Copying back..."
+
+    end if
 
     ! Step 4: copy old array back to buf
 
@@ -230,6 +302,51 @@ program main
     deallocate(nbrs)
 
     call MPI_FINALIZE(ierr)
+
+contains 
+
+
+subroutine get_average(array, M, N, comm, average)
+
+    double precision, dimension(:,:), intent(in)    :: array 
+
+    integer,                          intent(in)    :: comm
+    integer,                          intent(in)    :: M
+    integer,                          intent(in)    :: N
+
+    double precision,                 intent(out)   :: average
+
+    integer                                         :: i, j
+    integer                                         :: ierr
+
+    double precision                                :: arr_sum
+    
+    local_sum = sum(array)
+
+    call MPI_ALLREDUCE(local_sum, average, 1, MPI_DOUBLE_PRECISION, MPI_SUM, comm, ierr)
+
+    average = average / ( M * N )
+
+end subroutine get_average
+
+
+subroutine get_max(array, comm, max)
+
+    double precision, dimension(:,:), intent(in)    :: array
+
+    integer,                          intent(in)    :: comm 
+    
+    double precision,                 intent(out)   :: max
+
+    double precision                                :: local_max
+
+    integer                                         :: ierr
+
+    local_max = max(array)
+
+    call MPI_ALLREDUCE(local_max, max, 1, MPI_DOUBLE_PRECISION, MPI_MAX, comm, ierr)
+
+end subroutine get_max
 
 end program main
 

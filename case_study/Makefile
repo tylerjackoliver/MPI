@@ -1,7 +1,7 @@
 # Helpful macros
 TARGET_EXEC ?= edge_to_image
 OBJ_DIR ?= ./objects
-SRC_DIRS ?= ./source
+SRC_DIRS ?= ./src
 
 # Macros for CC
 FC = mpif90
