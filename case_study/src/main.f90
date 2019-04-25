@@ -39,7 +39,7 @@ program main
 
     double precision, allocatable       :: old      (:,:)   ! "old" array: for iteration
     double precision, allocatable       :: buf      (:,:)   ! Buffer_array: initial read-in location
-    double precision, allocatable       :: new_array(:,:)   ! "new" array: for iteration
+    double precision, allocatable       :: new(:,:)   ! "new" array: for iteration
     double precision, allocatable       :: edge     (:,:)   ! Array containing edge values
     double precision, allocatable       :: masterbuf(:,:)   ! Data array for rank 0
 
@@ -53,7 +53,7 @@ program main
     ! MPI variable initialisation
     !
 
-    integer                             :: comm
+    integer, parameter                  :: comm = MPI_COMM_WORLD
     integer                             :: rank
     integer                             :: pool_size
     integer                             :: ierr
@@ -73,6 +73,26 @@ program main
     double precision                    :: average
 
     !
+    ! Pre-run checks
+    !
+
+    ! Initialise MPI, check the size
+
+    call MPI_INIT(ierr)
+
+    call MPI_COMM_SIZE(comm, pool_size, ierr)
+
+    ! If size =/ P, then exit
+
+    if (pool_size .ne. P) then
+
+        call MPI_FINALIZE(ierr)
+        error stop "Number of processors does not match the expected number of processes."
+
+    end if
+
+
+    !
     ! Execute program
     !
 
@@ -90,27 +110,10 @@ program main
 
     allocate(masterbuf(M, N))
     allocate(old(0:Mp+1, 0:Np+1))
-    allocate(new_array(0:Mp+1, 0:Np+1))
+    allocate(new(0:Mp+1, 0:Np+1))
     allocate(edge(0:Mp+1, 0:Np+1))
     allocate(buf(Mp, Np))
     allocate(nbrs(2 * num_dims))
-
-    ! Initialise MPI, check the size
-
-    call MPI_INIT(ierr)
-
-    comm = MPI_COMM_WORLD
-
-    call MPI_COMM_SIZE(comm, pool_size, ierr)
-
-    ! If size =/ P, then exit
-
-    if (pool_size .ne. P) then
-
-        call MPI_FINALIZE(ierr)
-        error stop "Number of processors does not match the expected number of processes."
-
-    end if
 
     ! Step 0: Initialise the cartesian topology
 
@@ -144,7 +147,7 @@ program main
 
     do while (delta_global > 0.1 .and. num_iters < max_iters)
 
-        ! We first need to send the halos from the left and right processes
+        ! We first need to send the halos to/from the left and right processes
 
         call send_halos_1d(old, Np, M, nbrs, cart_comm)
 
@@ -154,9 +157,8 @@ program main
 
             do i = 1, Mp ! Column major
 
-                new_array(i, j) = frac * ( old(i-1, j) + old(i+1, j) + &
+                new(i, j) = frac * ( old(i-1, j) + old(i+1, j) + &
                 old(i, j+1) +  old(i, j-1) - edge(i, j) )
-                call get_local_delta(new_array(i, j), old(i, j), delta)
 
             end do
 
@@ -164,13 +166,14 @@ program main
 
         if ((mod(num_iters, check_int) .eq. 0)) then
 
-            call get_average(new_array, M, N, cart_comm, average)
+            call get_average(new, M, N, cart_comm, average)
+            call get_local_delta(new, old, delta)
             call get_global_delta(delta, cart_comm, delta_global)
             call print_average_max(average, delta_global, num_iters, rank)
 
         end if
 
-        call array_copy(old(1:Mp, 1:Np), new_array(1:Mp, 1:Np))
+        call array_copy(old(1:Mp, 1:Np), new(1:Mp, 1:Np))
 
         num_iters = num_iters + 1
 
@@ -188,7 +191,7 @@ program main
 
     ! Now gather from buf back to buf
 
-    call MPI_GATHER(buf, Mp * Np, MPI_DOUBLE_PRECISION, masterbuf, Mp * Np, MPI_DOUBLE_PRECISION, 0, comm, ierr)
+    call gather_data(buf, Mp * Np, masterbuf, Mp * Np, comm)
 
     ! Write buf to image
 
@@ -198,7 +201,7 @@ program main
 
     end if
 
-    deallocate(new_array)
+    deallocate(new)
     deallocate(edge)
     deallocate(old)
     deallocate(buf)
@@ -234,16 +237,36 @@ end subroutine get_average
 
 subroutine get_local_delta(newval, oldval, loc_delta)
 
-    double precision, intent(in)    :: newval
-    double precision, intent(in)    :: oldval 
+    double precision, dimension(:,:), intent(in)    :: newval
+    double precision, dimension(:,:), intent(in)    :: oldval 
 
-    double precision, intent(inout) :: loc_delta
+    double precision,                 intent(out)   :: loc_delta
 
-    if ((newval - oldval) > loc_delta) then
+    integer                                         :: i, j
+    integer                                         :: dims(2)
 
-        loc_delta = newval - oldval
+    double precision                                :: temp
 
-    end if
+    dims = shape(newval)
+    loc_delta = 0
+
+    ! Altered loop variables based on zero-indexing
+
+    do j = 2, dims(2)-1
+
+        do i = 2, dims(1)-1
+
+            temp = abs(newval(i, j) - oldval(i, j))
+
+            if (temp > loc_delta) then
+
+                loc_delta = temp
+
+            end if
+
+        end do
+        
+    end do
 
 end subroutine get_local_delta
 
@@ -259,7 +282,8 @@ subroutine get_global_delta(delta, comm, global_delta)
 
     integer                                         :: ierr
 
-    call MPI_ALLREDUCE(delta, global_delta, 1, MPI_DOUBLE_PRECISION, MPI_MAX, comm, ierr)
+    call MPI_ALLREDUCE(delta, global_delta, 1, MPI_DOUBLE_PRECISION, &
+                       MPI_MAX, comm, ierr)
 
 end subroutine get_global_delta
 
@@ -284,9 +308,9 @@ subroutine print_average_max(average, delta, num_iters, rank)
 end subroutine print_average_max
 
 
-subroutine get_array_element_1d(new_array, old, edge, i, j)
+subroutine get_array_element_1d(new, old, edge, i, j)
     
-    double precision, dimension(:,:), intent(inout) :: new_array
+    double precision, dimension(:,:), intent(inout) :: new
 
     double precision, dimension(:,:), intent(in)    :: old
     double precision, dimension(:,:), intent(in)    :: edge
@@ -300,7 +324,7 @@ subroutine get_array_element_1d(new_array, old, edge, i, j)
     
     temp_sum = old(i-1, j) + old(i+1, j) + old(i, j+1) +  old(i, j-1)
 
-    new_array(i, j) = frac * ( temp_sum - edge(i, j) )
+    new(i, j) = frac * ( temp_sum - edge(i, j) )
 
 end subroutine get_array_element_1d
 
@@ -466,6 +490,30 @@ subroutine send_halos_1d(old, Np, M, nbrs, cart_comm)
     recv_status, ierr)
 
 end subroutine send_halos_1d
+
+
+
+subroutine gather_data(to_send, send_size, to_recv, recv_size, comm)
+
+    double precision, dimension(:,:), intent(in)        :: to_send
+
+    integer,                          intent(in)        :: send_size
+    
+    double precision, dimension(:,:), intent(out)       :: to_recv
+
+    integer,                          intent(in)        :: recv_size
+    integer,                          intent(in)        :: comm
+
+    integer, dimension(mpi_status_size)                 :: recv_status      ! Receive status, non-blocking send
+
+    integer                                             :: ierr
+
+    call MPI_GATHER(to_send, send_size, MPI_DOUBLE_PRECISION, to_recv, recv_size,&
+                    MPI_DOUBLE_PRECISION, 0, comm, ierr)
+
+end subroutine gather_data
+
+
 
 end program
 
