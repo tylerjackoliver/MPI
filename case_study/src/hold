@@ -40,7 +40,7 @@ subroutine initialise_standard_topology_1d(pool_size, old_comm, new_comm, new_ra
 
 end subroutine initialise_standard_topology_1d
 
-subroutine array_copy(new, old)
+subroutine util_array_copy(new, old)
 
     double precision, dimension(:,:), intent(inout) :: new
     double precision, dimension(:,:), intent(in)    :: old
@@ -54,7 +54,7 @@ subroutine array_copy(new, old)
     if ( (dims_new(1) .ne. dims_old(1)) .OR. (dims_new(2) .ne. dims_old(2)) ) then
 
         call MPI_FINALIZE(ierr)
-        error stop "Error: tried to array_copy but the dimensions didn't match."
+        error stop "Error: tried to util_array_copy but the dimensions didn't match."
 
     end if
 
@@ -62,4 +62,38 @@ subroutine array_copy(new, old)
 
     new(:,:) = old(:,:)
 
-end subroutine array_copy
+end subroutine util_array_copy
+
+subroutine util_array_copy(new, old)
+
+    double precision, dimension(:,:), intent(inout) :: new
+    double precision, dimension(:,:), intent(in)    :: old
+
+    integer                                         :: dims_new(2)
+    integer                                         :: dims_old(2)
+
+    integer                                         :: i, j
+
+    dims_new = shape(new)
+    dims_old = shape(old)
+
+    if ( (dims_new(1) .ne. dims_old(1)) .OR. (dims_new(2) .ne. dims_old(2)) ) then
+
+        call MPI_FINALIZE(ierr)
+        error stop "Error: tried to util_array_copy but the dimensions didn't match."
+
+    end if
+
+    ! Use array slicing for now
+
+    do j = 1, dims_new(2)
+
+        do i = 1,dims_new(1)
+
+            new(i, j) = old(i, j)
+
+        end do
+
+    end do
+
+end subroutine util_array_copy

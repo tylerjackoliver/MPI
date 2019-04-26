@@ -4,6 +4,7 @@
 ! Modified 25/4 to compute the average value of the numbers every 10% of iterations.
 ! Modified 25/4 to cease computation whenever the difference slips below 0.1.
 !
+! To run serially, set num_dims = 0 and P = 1
 
 program main
 
@@ -11,6 +12,7 @@ program main
     use utility_functions                                   ! Contains non-mpi subroutiens used below
     use mpi                                                 ! Use MPI library
     use mpi_wrappers                                        ! Contains MPI wrappers overloaded to number of dimensions
+    use problem_constants                                   ! Defines P, N, M
     use pgmio                                               ! Use .pgm reading library
 
     implicit none
@@ -18,9 +20,6 @@ program main
     !
     ! Variable declarations for PGM file I/O
     !
-
-    integer                             :: M                ! Number of pixels horizontally
-    integer                             :: N                ! Number of pixels vertically
 
     integer                             :: Mp               ! Horizontal image slice
     integer                             :: Np               ! Vertical image slice
@@ -31,7 +30,6 @@ program main
     integer                             :: num_iters
 
     integer, parameter                  :: max_iters = 10000! Number of iterations of jacobi
-    integer, parameter                  :: P = 2            ! Number of cores
 
     integer, parameter                  :: check_int = 100
 
@@ -49,7 +47,7 @@ program main
 
     double precision                    :: delta_global = 10! Delta flag: set unnecessarily high
 
-    double precision                    :: delta = 100
+    double precision                    :: local_delta = 100
 
     !
     ! MPI variable initialisation
@@ -80,33 +78,11 @@ program main
 
     ! Initialise MPI, check the size
 
-    call MPI_INIT(ierr)
-
-    call MPI_COMM_SIZE(comm, pool_size, ierr)
-
-    ! If size =/ P, then exit
-
-    if (pool_size .ne. P) then
-
-        call MPI_FINALIZE(ierr)
-        error stop "Number of processors does not match the expected number of processes."
-
-    end if
-
+    call mpi_initialise(num_dims, size, rank)
 
     !
     ! Execute program
     !
-
-    ! Define x and y dimensions
-
-    num_dims = 1
-
-    M = 192
-    N = 128
-
-    Mp = M
-    Np = ceiling(dble(N/P))                                ! Assumes N/P is perfect
 
     ! Now allocate data arrays
 
@@ -118,8 +94,8 @@ program main
     allocate(nbrs(2 * num_dims))
 
     ! Step 0: Initialise the cartesian topology
-
-    call mpi_initialise_standard_topology(num_dims, pool_size, comm, cart_comm, rank, nbrs)
+    ! If running serially, this returns -1 for cart_comm, zero for rank, and (/0/) for nbrs
+    ! These variables are MPI-only and don't matter for serial runtime
 
     ! Step 1: read the edges data file into the buffer
 
@@ -135,13 +111,13 @@ program main
 
     ! Step 2: Copy arrays
 
-    call print_onrank0("Initialising arrays...", rank)
-    call array_copy(edge(1:Mp, 1:Np), buf(1:Mp, 1:Np))
-    call array_init(old, 255.d0)
+    call util_print_onrank0("Initialising arrays...", rank)
+    call util_array_copy(edge(1:Mp, 1:Np), buf(1:Mp, 1:Np))
+    call util_array_init(old, 255.d0)
 
     ! Step 3: Iterate through our edges
 
-    call print_onrank0("Iterating...", rank)
+    call util_print_onrank0("Iterating...", rank)
 
     num_iters = 0
 
@@ -149,9 +125,9 @@ program main
 
         ! We first need to send the halos to/from the left and right processes
 
-        call mpi_send_halos(num_dims, old, Np, M, nbrs, cart_comm)
+        call mpi_send_halos(num_dims, old, Np, M, dims, nbrs, cart_comm)
 
-        delta = 0
+        local_delta = 0
 
         do j = 1, Np
 
@@ -166,14 +142,14 @@ program main
 
         if ((mod(num_iters, check_int) .eq. 0)) then
 
-            call get_average(new, M, N, cart_comm, average)
-            call get_local_delta(new, old, delta)
-            call get_global_delta(delta, cart_comm, delta_global)
-            call print_average_max(average, delta_global, num_iters, rank)
+            call util_get_average(new, M, N, cart_comm, average)
+            call util_get_local_delta(new, old, local_delta)
+            call mpi_get_global_delta(num_dims, local_delta, cart_comm, delta_global)
+            call util_print_average_max(average, delta_global, num_iters, rank)
 
         end if
 
-        call array_copy(old(1:Mp, 1:Np), new(1:Mp, 1:Np))
+        call util_array_copy(old(1:Mp, 1:Np), new(1:Mp, 1:Np))
 
         num_iters = num_iters + 1
 
@@ -187,11 +163,11 @@ program main
 
     ! Step 4: copy old array back to buf
 
-    call array_copy(buf(1:Mp, 1:Np), old(1:Mp, 1:Np))
+    call util_array_copy(buf(1:Mp, 1:Np), old(1:Mp, 1:Np))
 
     ! Now gather from buf back to buf
 
-    call gather_data(buf, Mp * Np, masterbuf, Mp * Np, comm)
+    call mpi_gather_data(num_dims, buf, Mp * Np, masterbuf, Mp * Np, comm)
 
     ! Write buf to image
 

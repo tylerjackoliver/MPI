@@ -4,7 +4,7 @@ module utility_functions
 
     contains
 
-    subroutine array_copy(new, old)
+    subroutine util_array_copy(new, old)
 
         double precision, dimension(:,:), intent(inout) :: new
         double precision, dimension(:,:), intent(in)    :: old
@@ -22,7 +22,7 @@ module utility_functions
         if ( (dims_new(1) .ne. dims_old(1)) .OR. (dims_new(2) .ne. dims_old(2)) ) then
     
             call MPI_FINALIZE(ierr)
-            error stop "Error: tried to array_copy but the dimensions didn't match."
+            error stop "Error: tried to util_array_copy but the dimensions didn't match."
     
         end if
     
@@ -38,10 +38,10 @@ module utility_functions
     
         end do
     
-    end subroutine array_copy
+    end subroutine util_array_copy
 
 
-    subroutine array_init(array, init_val)
+    subroutine util_array_init(array, init_val)
 
         double precision, dimension(:, :), intent(inout):: array
         double precision,                  intent(in)   :: init_val
@@ -61,10 +61,10 @@ module utility_functions
 
         end do
 
-    end subroutine array_init
+    end subroutine util_array_init
 
 
-    subroutine print_onrank0(msg, rank)
+    subroutine util_print_onrank0(msg, rank)
 
         character(*), intent(in)    :: msg
         integer,      intent(in)    :: rank
@@ -75,10 +75,10 @@ module utility_functions
 
         end if
 
-    end subroutine print_onrank0
+    end subroutine util_print_onrank0
 
     
-    subroutine print_average_max(average, delta, num_iters, rank)
+    subroutine util_print_average_max(average, delta, num_iters, rank)
 
         double precision, intent(in)         :: average
 
@@ -95,10 +95,10 @@ module utility_functions
 
         end if
 
-    end subroutine print_average_max
+    end subroutine util_print_average_max
 
 
-    subroutine get_local_delta(newval, oldval, loc_delta)
+    subroutine util_get_local_delta(newval, oldval, loc_delta)
 
         double precision, dimension(:,:), intent(in)    :: newval
         double precision, dimension(:,:), intent(in)    :: oldval 
@@ -131,7 +131,27 @@ module utility_functions
             
         end do
 
-    end subroutine get_local_delta
+    end subroutine util_get_local_delta
+
+    subroutine util_print_welcomemessage(rank)
+
+        integer, intent(in) :: rank
+
+        if (rank .eq. 0) then
+
+            write(*,*)
+            write(*,*)
+            write(*,*) " _____    _              ____       _            _   _"             
+            write(*,*) "| ____|__| | __ _  ___  |  _ \  ___| |_ ___  ___| |_(_) ___  _ __  "
+            write(*,*) "|  _| / _` |/ _` |/ _ \ | | | |/ _ \ __/ _ \/ __| __| |/ _ \| '_ \ " 
+            write(*,*) "| |__| (_| | (_| |  __/ | |_| |  __/ ||  __/ (__| |_| | (_) | | | |"
+            write(*,*) "|_____\__,_|\__, |\___| |____/ \___|\__\___|\___|\__|_|\___/|_| |_|"
+            write(*,*) "            |___/                                                  "
+            write(*,*)
+
+        end if
+
+    end subroutine util_print_welcomemessage
 
 
 end module utility_functions

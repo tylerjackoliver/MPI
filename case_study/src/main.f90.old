@@ -306,7 +306,7 @@ program main
 contains 
 
 
-! subroutine get_average(array, M, N, comm, average)
+! subroutine util_get_average(array, M, N, comm, average)
 
 !     double precision, dimension(:,:), intent(in)    :: array 
 
@@ -327,7 +327,7 @@ contains
 
 !     average = average / ( M * N )
 
-! end subroutine get_average
+! end subroutine util_get_average
 
 
 ! subroutine get_max(array, comm, max)
