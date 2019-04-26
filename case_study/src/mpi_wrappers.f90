@@ -18,6 +18,10 @@ module mpi_wrappers
     integer             :: comm
     integer             :: cart_comm
 
+    integer, allocatable:: counts(:)
+    integer, allocatable:: displacements(:)
+    integer, allocatable:: nbrs(:)
+
     contains
 
     subroutine mpi_initialise_standard_topology(num_dims, pool_size, old_comm, new_comm, new_rank, dims, nbrs)
@@ -30,7 +34,7 @@ module mpi_wrappers
 
         integer, intent(out)                    :: new_comm
         integer, intent(out)                    :: new_rank
-        integer, intent(out), allocatable       :: dims(:)
+        integer, intent(inout)                  :: dims
 
         integer, intent(inout), dimension(:)    :: nbrs
 
@@ -42,7 +46,6 @@ module mpi_wrappers
         logical                                 :: periodic(1)
         logical                                 :: reorder(1)
 
-        allocate(dims(num_dims))
         reorder = .false.
 
         if (num_dims .eq. 0) then   ! running serially
@@ -53,7 +56,7 @@ module mpi_wrappers
 
         elseif (num_dims .eq. 1) then
 
-            call initialise_standard_topology_1d(pool_size, old_comm, new_comm, new_rank, nbrs)
+            call initialise_standard_topology_1d(pool_size, old_comm, new_comm, new_rank, dims, nbrs)
         
         elseif (num_dims .eq. 2) then
 
@@ -64,7 +67,7 @@ module mpi_wrappers
     end subroutine mpi_initialise_standard_topology
 
 
-    subroutine initialise_standard_topology_1d(pool_size, old_comm, new_comm, new_rank, nbrs)
+    subroutine initialise_standard_topology_1d(pool_size, old_comm, new_comm, new_rank, dims, nbrs)
         
         use neighbour_indexes                   ! Provides standardised values of left, right
 
@@ -73,10 +76,11 @@ module mpi_wrappers
 
         integer, intent(out)                    :: new_comm
         integer, intent(out)                    :: new_rank
+        integer, intent(out), allocatable       :: dims(:)
+
         integer, intent(inout), dimension(:)    :: nbrs
 
         integer, parameter                      :: num_dims = 1
-        integer, intent(in), dimension(:)       :: dims
         integer                                 :: ierr
         integer                                 :: x_dir 
         integer                                 :: displacement
@@ -86,6 +90,8 @@ module mpi_wrappers
         logical                                 :: reorder(1)
 
         reorder = .false.
+
+        allocate(dims(num_dims))
 
         ! Set dims to zero and periodic to false
 
@@ -226,8 +232,8 @@ module mpi_wrappers
 
         integer                                         :: ierr
 
-        call MPI_Scatterv(source, counts, displs, MASTER_BLOCK_T, &
-                          dest, Mp*Np, MPI_REALNUMBER, 0, cartcomm,ierr)
+        call MPI_Scatterv(to_send, counts, displacements, master_type, &
+                          to_recv, Mp*Np, MPI_DOUBLE_PRECISION, 0, comm, ierr)
 
     end subroutine mpi_send_data_2d
 
@@ -291,12 +297,13 @@ module mpi_wrappers
     end subroutine send_halos_1d
 
 
-    subroutine send_halos_2d(old, Np, M, dims, nbrs, cart_comm, buf)
+    subroutine send_halos_2d(old, Np, M, dims, nbrs, cart_comm)
 
         double precision, dimension(0:,0:), intent(inout)   :: old
 
         integer,                          intent(in)        :: Np
         integer,                          intent(in)        :: M
+        integer,          dimension(:),   intent(in)        :: dims
         integer,          dimension(:),   intent(in)        :: nbrs
         integer,                          intent(in)        :: cart_comm
 
@@ -310,11 +317,7 @@ module mpi_wrappers
 
         num_dims = 2
 
-        call get_comm_size(cart_comm, pool_size)
-
-        call MPI_Scatterv(old, counts, displacements, master_type, &
-                          buf, Mp*Np, MPI_DOUBLE_PRECISION, 0, cart_comm, ierr)
-
+        print *, "Pass."
 
     end subroutine send_halos_2d
 
@@ -460,14 +463,6 @@ module mpi_wrappers
 
         integer, dimension(:),      intent(in)  :: dims
 
-        integer,                    intent(out) :: subarray_type
-        integer,                    intent(out) :: master_type
-        integer,                    intent(out) :: v_halo_type
-        integer,                    intent(out) :: h_halo_type
-
-        integer, allocatable,       intent(out) :: cnts
-        integer, allocatable,       intent(out) :: dsplcmnts
-
         integer, allocatable                    :: sizes(:)
         integer, allocatable                    :: subsizes(:)
         integer, allocatable                    :: starts(:)
@@ -480,6 +475,7 @@ module mpi_wrappers
         integer(kind=mpi_address_kind)          :: integer_extent
         integer(kind=mpi_address_kind)          :: lb           ! Lower bound
         integer(kind=mpi_address_kind)          :: double_extent
+        integer(kind=mpi_address_kind)          :: tot_extent
 
         ! Allocate arrays based on num_dims
 
@@ -548,10 +544,10 @@ module mpi_wrappers
         call MPI_TYPE_GET_EXTENT(MPI_DOUBLE_PRECISION, lb, double_extent, ierr)
         
         start = 0
-        extent = Mp * double_extent
+        tot_extent = Mp * double_extent
         
-        call MPI_TYPE_CREATE_RESIZED(long_type, start, extent, &
-                                     master_type,ierr)
+        call MPI_TYPE_CREATE_RESIZED(temp_type, start, tot_extent, &
+                                     master_type, ierr)
 
         ! Commit these new datatypes so that we can use them
 
@@ -560,9 +556,9 @@ module mpi_wrappers
         call MPI_TYPE_COMMIT(v_halo_type, ierr)
         call MPI_TYPE_COMMIT(h_halo_type, ierr)
 
-        deallocate(sizes(num_dims))
-        deallocate(subsizes(num_dims))
-        deallocate(starts(num_dims))
+        deallocate(sizes)
+        deallocate(subsizes)
+        deallocate(starts)
 
     end subroutine mpi_define_vectors
 
@@ -576,20 +572,18 @@ module mpi_wrappers
         integer,               intent(in)       :: pool_size
         integer,               intent(in)       :: Np
 
-        integer, allocatable                    :: counts(:)
-        integer, allocatable                    :: displacements(:)
+        integer, dimension(:), intent(inout)    :: counts
+        integer, dimension(:), intent(inout)    :: displacements
 
         integer                                 :: baseline
-
-        allocate(cnts(num_dims))
-        allocate(dsplcmnts(num_dims))
+        integer                                 :: i
 
         baseline = 1
 
         do i = 1, pool_size
 
                 counts(i) = 1
-                displs(i) = (baseline-1) + mod(i-1, dims(1))
+                displacements(i) = (baseline-1) + mod(i-1, dims(1))
 
                 if (mod(i, dims(1)) .eq. 0) then
                 
@@ -614,20 +608,24 @@ module mpi_wrappers
     end subroutine get_comm_size
 
 
-    subroutine mpi_initialise(num_dims, size, rank)
+    subroutine mpi_initialise(num_dims, pool_size, rank, nbrs, dims)
 
         integer, intent(in)     :: num_dims
 
-        integer, intent(out)    :: size
+        integer, intent(out)    :: pool_size
         integer, intent(out)    :: rank
 
+        integer, dimension(:), intent(inout)  :: nbrs
+        integer, dimension(:), intent(inout)  :: dims
+
+        integer                 :: i
         integer                 :: ierr
 
         call MPI_INIT(ierr)
 
         comm = MPI_COMM_WORLD
 
-        call get_comm_size(comm, size)
+        call get_comm_size(comm, pool_size)
 
         ! If size =/ P, then exit
     
@@ -638,31 +636,39 @@ module mpi_wrappers
     
         end if
         
-        ! Define local problem array sizes
+        ! Define local problem array size
 
-        if (rank .eq. 0) then
+        ! call util_print_welcomemessage(rank)
+
+        if (num_dims .ne. 0) then
+
+            allocate(counts(pool_size))
+
+            call mpi_initialise_standard_topology(num_dims, pool_size, comm, cart_comm, rank, dims, nbrs)
+
+            if (num_dims .eq. 1) then
+    
+                Mp = M
+                Np = ceiling(dble(N/P))                                ! Assumes N/P is perfect
+    
+            elseif (num_dims .eq. 2) then
+    
+                Mp = M/dims(1)
+                Np = N/dims(2)
+    
+            end if
+
+            call compute_counts_displacements(num_dims, dims, pool_size, Np, counts, displacements)
+            call mpi_define_vectors(num_dims, dims, pool_size, Mp, Np)
+
+        else
 
             Mp = M 
             Np = N
 
-        elseif (rank .eq. 1) then
-
-            Mp = M
-            Np = ceiling(dble(N/P))                                ! Assumes N/P is perfect
-
-        elseif (rank .eq. 2) then
-
-            Mp = M/dims(1)
-            Np = N/dims(2)
-
         end if
 
-
-        call util_print_welcomemessage(rank)
-        call mpi_initialise_standard_topology(num_dims, size, comm, cart_comm, rank, dims, nbrs)
-
-        call compute_counts_displacements(num_dims, dims, size, Np, counts, displacements)
-        call mpi_define_vectors(num_dims, dims, pool_size, Mp, Np)
+    end subroutine
 
 end module mpi_wrappers
 

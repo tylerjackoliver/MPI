@@ -21,8 +21,6 @@ program main
     ! Variable declarations for PGM file I/O
     !
 
-    integer                             :: Mp               ! Horizontal image slice
-    integer                             :: Np               ! Vertical image slice
 
     integer                             :: i                ! Loop variables
     integer                             :: j                ! Loop variables
@@ -53,19 +51,16 @@ program main
     ! MPI variable initialisation
     !
 
-    integer, parameter                  :: comm = MPI_COMM_WORLD
     integer                             :: rank
     integer                             :: pool_size
     integer                             :: ierr
+    integer, allocatable                :: dims(:)
 
     !
     ! Cartesian topology
     !
 
-    integer                             :: cart_comm        ! Cartesian topology communicator
     integer, dimension(mpi_status_size) :: recv_status      ! Receive status, non-blocking send
-    integer                             :: num_dims         ! Number of dimensions
-    integer, allocatable                :: nbrs(:)          ! Array for addresses of neighbours
 
     integer, parameter                  :: x_dir = 0        ! What direction is +x?
     integer, parameter                  :: displacement = 1 ! Displacement for cart. top.
@@ -75,11 +70,6 @@ program main
     !
     ! Pre-run checks
     !
-
-    ! Initialise MPI, check the size
-
-    call mpi_initialise(num_dims, size, rank)
-
     !
     ! Execute program
     !
@@ -92,6 +82,11 @@ program main
     allocate(edge(0:Mp+1, 0:Np+1))
     allocate(buf(Mp, Np))
     allocate(nbrs(2 * num_dims))
+    allocate(dims(num_dims))
+
+    ! Initialise MPI, check the size
+
+    call mpi_initialise(num_dims, pool_size, rank, nbrs, dims)
 
     ! Step 0: Initialise the cartesian topology
     ! If running serially, this returns -1 for cart_comm, zero for rank, and (/0/) for nbrs
