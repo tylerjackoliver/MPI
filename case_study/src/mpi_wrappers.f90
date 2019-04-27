@@ -6,6 +6,8 @@ module mpi_wrappers
 
     implicit none
 
+    PUBLIC
+
     ! MPI implementation constants
 
     integer             :: master_type
@@ -20,33 +22,23 @@ module mpi_wrappers
 
     integer, allocatable:: counts(:)
     integer, allocatable:: displacements(:)
-    integer, allocatable:: nbrs(:)
+    integer             :: nbrs(nbrs_len)
 
     contains
 
     subroutine mpi_initialise_standard_topology(num_dims, pool_size, old_comm, new_comm, new_rank, dims, nbrs)
         
-        use neighbour_indexes                   ! Provides standardised values of left, right
-
         integer, intent(in)                     :: num_dims
         integer, intent(in)                     :: pool_size
         integer, intent(in)                     :: old_comm
 
         integer, intent(out)                    :: new_comm
         integer, intent(out)                    :: new_rank
-        integer, intent(inout)                  :: dims
+        integer, intent(inout), dimension(:)    :: dims
 
         integer, intent(inout), dimension(:)    :: nbrs
 
         integer                                 :: ierr
-        integer                                 :: x_dir 
-        integer                                 :: displacement
-        integer                                 :: i
-
-        logical                                 :: periodic(1)
-        logical                                 :: reorder(1)
-
-        reorder = .false.
 
         if (num_dims .eq. 0) then   ! running serially
 
@@ -76,7 +68,8 @@ module mpi_wrappers
 
         integer, intent(out)                    :: new_comm
         integer, intent(out)                    :: new_rank
-        integer, intent(out), allocatable       :: dims(:)
+
+        integer, intent(inout), dimension(:)    :: dims
 
         integer, intent(inout), dimension(:)    :: nbrs
 
@@ -90,8 +83,8 @@ module mpi_wrappers
         logical                                 :: reorder(1)
 
         reorder = .false.
-
-        allocate(dims(num_dims))
+        x_dir = 0
+        displacement = 1
 
         ! Set dims to zero and periodic to false
 
@@ -104,13 +97,18 @@ module mpi_wrappers
 
         x_dir = 0
         displacement = 1
-        
+
         ! Now create the topology
 
         call MPI_DIMS_CREATE(pool_size, num_dims, dims, ierr)
+
         call MPI_CART_CREATE(old_comm, num_dims, dims, periodic, reorder, new_comm, ierr)
+
         call MPI_COMM_RANK(new_comm, new_rank, ierr)
+
         call MPI_CART_SHIFT(new_comm, x_dir, displacement, nbrs(left), nbrs(right), ierr)
+
+        write(*,*) "After calling the communicator, the communicator has been set to", new_comm
 
     end subroutine initialise_standard_topology_1d
 
@@ -124,7 +122,7 @@ module mpi_wrappers
 
         integer, intent(out)                    :: new_comm
         integer, intent(out)                    :: new_rank
-        integer, intent(out)                    :: dims(2)
+        integer, intent(inout), dimension(:)    :: dims
 
         integer, intent(inout), dimension(:)    :: nbrs
 
@@ -216,6 +214,8 @@ module mpi_wrappers
         call MPI_SCATTER(to_send, size_to_send, MPI_DOUBLE_PRECISION, to_recv, &
                         size_to_recv, MPI_DOUBLE_PRECISION, 0, comm, ierr)
 
+        ! call mpi_send_data(num_dims, masterbuf, Mp*Np, buf, Mp * Np, cart_comm)
+
     end subroutine mpi_send_data_1d
 
 
@@ -255,6 +255,7 @@ module mpi_wrappers
             ! Do nothing - old is already what it should be
 
         elseif (num_dim .eq. 1) then
+
 
             call send_halos_1d(old, Np, M, nbrs, cart_comm)
 
@@ -655,11 +656,11 @@ module mpi_wrappers
     
                 Mp = M/dims(1)
                 Np = N/dims(2)
+
+                call compute_counts_displacements(num_dims, dims, pool_size, Np, counts, displacements)
+                call mpi_define_vectors(num_dims, dims, pool_size, Mp, Np)
     
             end if
-
-            call compute_counts_displacements(num_dims, dims, pool_size, Np, counts, displacements)
-            call mpi_define_vectors(num_dims, dims, pool_size, Mp, Np)
 
         else
 

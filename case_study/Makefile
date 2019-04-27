@@ -3,9 +3,13 @@ TARGET_EXEC ?= edge_to_image
 OBJ_DIR ?= ./objects
 SRC_DIRS ?= ./src
 
+# Runtime option (Parallel1d, Parallel2d, serial)
+
+RUNTIME=PARALLEL1d
+
 # Macros for CC
 FC = mpif90
-CFLAGS = -Wall
+CFLAGS = -Wall -cpp -D${RUNTIME} -ffree-line-length-none
 
 # Directories
 SRCS := $(shell find $(SRC_DIRS) -name *.f90)
