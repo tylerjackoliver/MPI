@@ -135,30 +135,10 @@ module wrappers_1d
 
             call util_print_welcomemessage(rank)
 
-            if (num_dims .ne. 0) then
-
-                if (num_dims .eq. 1) then
-
-                    Mp = M
-                    Np = ceiling(dble(N/P))                                ! Assumes N/P is perfect
-                    call initialise_standard_topology_1d(num_dims, dims, cart_comm, nbrs, rank)
-
-                elseif (num_dims .eq. 2) then
-
-                    Mp = M/dims(1)
-                    Np = N/dims(2)
-
-                    ! call compute_counts_displacements(num_dims, dims, pool_size, Np, counts, displacements)
-                    ! call mpi_define_vectors(num_dims, dims, pool_size, Mp, Np)
-
-                end if
-
-            else
-
-                Mp = M 
-                Np = N
-
-            end if
+            Mp = M
+            Np = ceiling(dble(N/P))                                ! Assumes N/P is perfect
+            
+            call initialise_standard_topology_1d(num_dims, dims, cart_comm, nbrs, rank)
 
         end subroutine
 
@@ -389,6 +369,15 @@ module wrappers_1d
             end if
 
         end subroutine mpi_gather_data
+
+
+        subroutine mpi_finalize()
+
+            integer                 :: ierr 
+
+            call MPI_FINALIZE(ierr)
+
+        end subroutine mpi_finalize
 
 end module wrappers_1d
 
