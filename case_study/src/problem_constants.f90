@@ -4,8 +4,8 @@ module problem_constants
 
     PUBLIC
 
-    integer, parameter :: num_dims = 1
-    integer, parameter :: nbrs_len = 2  ! Must be twice nbrs_len
+    integer, parameter :: num_dims = 2
+    integer, parameter :: nbrs_len = 4  ! Must be twice nbrs_len
     integer, parameter :: P = 2
     integer, parameter :: M = 192
     integer, parameter :: N = 128

@@ -269,14 +269,14 @@ module wrappers_1d
             ! Send/recv right
 
 
-            call MPI_SENDRECV(old(1, Np), M, MPI_DOUBLE, nbrs(right), 0, &
-            old(1,0), M, MPI_DOUBLE, nbrs(left), 0, cart_comm, &
+            call MPI_SENDRECV(old(1, Np), M, MPI_DOUBLE, nbrs(up), 0, &
+            old(1,0), M, MPI_DOUBLE, nbrs(down), 0, cart_comm, &
             recv_status, ierr)
 
             ! Send/recv left
 
-            call MPI_SENDRECV(old(1, 1), M, MPI_DOUBLE, nbrs(left), 0, &
-            old(1, Np+1), M, MPI_DOUBLE, nbrs(right), 0, cart_comm, &
+            call MPI_SENDRECV(old(1, 1), M, MPI_DOUBLE, nbrs(down), 0, &
+            old(1, Np+1), M, MPI_DOUBLE, nbrs(up), 0, cart_comm, &
             recv_status, ierr)
 
         end subroutine send_halos_1d
@@ -297,14 +297,10 @@ module wrappers_1d
 
                 global_delta = delta
 
-            elseif (num_dims .eq. 1) then
+            else
 
                 call MPI_ALLREDUCE(delta, global_delta, 1, MPI_DOUBLE_PRECISION, &
                                 MPI_MAX, comm, ierr)
-
-            elseif (num_dims .eq. 2) then
-
-                print *, "TBD."
 
             end if
 
@@ -362,22 +358,18 @@ module wrappers_1d
                 call MPI_GATHER(to_send, send_size, MPI_DOUBLE_PRECISION, to_recv, recv_size,&
                             MPI_DOUBLE_PRECISION, 0, comm, ierr)
 
-            elseif (num_dims .eq. 2) then
-
-                print *, "Pass"
-
             end if
 
         end subroutine mpi_gather_data
 
 
-        subroutine mpi_finalize()
+        subroutine finalize_runtime()
 
             integer                 :: ierr 
 
             call MPI_FINALIZE(ierr)
 
-        end subroutine mpi_finalize
+        end subroutine finalize_runtime
 
 end module wrappers_1d
 
