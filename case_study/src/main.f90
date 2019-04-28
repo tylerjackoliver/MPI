@@ -20,7 +20,7 @@ program main
         use pgmio
         use utility_functions
 
-#elif SERIAL
+#elif SERIAL 
 
     use serial
 
@@ -61,6 +61,7 @@ program main
     integer                             :: pool_size
     integer                             :: ierr
     integer                             :: cart_comm
+    integer, dimension(8)               :: request
 
     !
     ! Cartesian topology
@@ -106,7 +107,8 @@ program main
     
     allocate(old(0:Mp+1, 0:Np+1))
     allocate(new(0:Mp+1, 0:Np+1))
-    allocate(edge(0:Mp+1, 0:Np+1))
+    ! allocate(edge(0:Mp+1, 0:Np+1))
+    allocate(edge(Mp, Np))
     allocate(buf(Mp, Np))
 
     ! Step 1: read the edges data file into the buffer
@@ -121,7 +123,13 @@ program main
     !
     ! The master buffer at least changes, which is good
 
-    call mpi_send_data(num_dims, masterbuf, Mp*Np, buf, Mp * Np, cart_comm)
+    write(*,*) "Rank", rank, ": masterbuf is", masterbuf(1:3,1), "and buf is", edge(1:3,1)
+
+    ! call mpi_send_data(num_dims, masterbuf, Mp*Np, buf, Mp * Np, cart_comm)
+    call MPI_Scatterv(masterbuf, counts, displacements, master_type, &
+    edge, Mp * Np, MPI_DOUBLE_PRECISION, 0, cart_comm, ierr)
+
+    write(*,*) "After, rank", rank, ": masterbuf is", masterbuf(1:3,1), "and buf is", edge(1:3,1)
 
     ! Step 2: loop over M, N
 
@@ -131,16 +139,18 @@ program main
 
     end if
 
-    do j = 1, Np
+    ! do j = 1, Np
 
-        do i = 1, Mp
+    !     do i = 1, Mp
 
-            edge(i, j) = buf(i, j)                          ! Read into buf
-            old(i, j)  = 255                          ! Set old array to white (255)
+    !         ! edge(i, j) = buf(i, j)                          ! Read into buf
+    !         old(i, j)  = 255                          ! Set old array to white (255)
 
-        end do
+    !     end do
  
-    end do
+    ! end do
+
+    old(:,:) = 255
 
     if (rank .eq. 0) then 
 
@@ -169,6 +179,8 @@ program main
             end do
 
         end do
+
+        write(*,*) "After", num_iters, "new(1,1) is", new(1,1), "on rank", rank
 
         if ((mod(num_iters, check_int) .eq. 0)) then
 
@@ -199,7 +211,7 @@ program main
 
     ! Now gather from buf back to masterbuf
 
-    call mpi_gather_data(num_dims, buf, Mp * Np, masterbuf, Mp * Np, cart_comm)
+    call mpi_gather_data(num_dims, old, Mp * Np, masterbuf, Mp * Np, cart_comm)
 
     ! Write buf to image
 
@@ -397,6 +409,9 @@ program main
 
         call mpi_define_vectors(num_dims, dims, pool_size, Mp, Np)
 
+        write(*,'(I2,A3,I2,A19,I4,A3,I4)') &
+        dims(1), " x ", dims(2), "with each block of", Mp, " x ", Np
+
     end subroutine mpi_initialise
 
 
@@ -442,14 +457,16 @@ program main
 
         call MPI_DIMS_CREATE(pool_size, num_dims, dims, ierr)
 
-        call MPI_CART_CREATE(MPI_COMM_WORLD, num_dims, dims, periodic, reorder, cart_comm, ierr)
+        ! 28/04 JT: Dimensions shifted to be consistent with Fortran order
+
+        call MPI_CART_CREATE(MPI_COMM_WORLD, num_dims, (/dims(2), dims(1)/), periodic, reorder, cart_comm, ierr)
         
         call MPI_COMM_RANK(cart_comm, rank, ierr)
         
         ! Get neighbours
 
-        call MPI_CART_SHIFT(cart_comm, x_dir, displacement, nbrs(left), nbrs(right), ierr)
-        call MPI_CART_SHIFT(cart_comm, y_dir, displacement, nbrs(down), nbrs(up), ierr)
+        call MPI_CART_SHIFT(cart_comm, y_dir, displacement, nbrs(left), nbrs(right), ierr)
+        call MPI_CART_SHIFT(cart_comm, x_dir, displacement, nbrs(down), nbrs(up), ierr)
     
         ! Compute the new array dimensions
 
@@ -503,29 +520,40 @@ program main
         integer, dimension(mpi_status_size)                 :: recv_status      ! Receive status, non-blocking send
 
         integer                                             :: ierr
+        integer, dimension(MPI_STATUS_SIZE,8)               :: stats
+        ! ! Send halos up, receive from down
 
-        ! Send halos up, receive from down
+        ! call MPI_SENDRECV(old(1, Np), 1, h_halo_type, nbrs(up), 0, &
+        ! old(1,0), 1, h_halo_type, nbrs(down), 0, cart_comm, &
+        ! recv_status, ierr)
 
-        call MPI_SENDRECV(old(1, Np), 1, h_halo_type, nbrs(up), 0, &
-        old(1,0), 1, h_halo_type, nbrs(down), 0, cart_comm, &
-        recv_status, ierr)
+        ! ! Send halos down, receive from up
 
-        ! Send halos down, receive from up
+        ! call MPI_SENDRECV(old(1, 1), 1, h_halo_type, nbrs(down), 0, &
+        ! old(1, Np+1), 1, h_halo_type, nbrs(up), 0, cart_comm, &
+        ! recv_status, ierr)
 
-        call MPI_SENDRECV(old(1, 1), 1, h_halo_type, nbrs(down), 0, &
-        old(1, Np+1), 1, h_halo_type, nbrs(up), 0, cart_comm, &
-        recv_status, ierr)
+        ! ! Send halos right, receive from left
 
-        ! Send halos right, receive from left
+        ! call MPI_SENDRECV(old(Mp, 1), 1, v_halo_type, nbrs(right), 0, &
+        ! old(0, 1), 1, v_halo_type, nbrs(left), 0, cart_comm, recv_status, ierr)
 
-        call MPI_SENDRECV(old(Mp, 1), 1, v_halo_type, nbrs(right), 0, &
-        old(0, 1), 1, v_halo_type, nbrs(left), 0, cart_comm, recv_status, ierr)
+        ! ! Send halos left, receive from right
 
-        ! Send halos left, receive from right
+        ! call MPI_SENDRECV(old(1,1), 1, v_halo_type, nbrs(left), 0, &
+        ! old(Mp+1, 1), 1, v_halo_type, nbrs(right), 0, cart_comm, recv_status, ierr)
 
-        call MPI_SENDRECV(old(1,1), 1, v_halo_type, nbrs(left), 0, &
-        old(Mp+1, 1), 1, v_halo_type, nbrs(right), 0, cart_comm, recv_status, ierr)
-
+        call MPI_Issend(old(Mp,1),1, v_halo_type, nbrs(right) ,0,cart_comm,request(1),ierr)
+        call MPI_Issend(old(1,1),1, v_halo_type, nbrs(left)   ,0,cart_comm,request(3),ierr)
+        call MPI_Issend(old(1,1), 1, h_halo_type, nbrs(down),0,cart_comm,request(7),ierr)
+        call MPI_Issend(old(1,Np), 1, h_halo_type, nbrs(up) ,0,cart_comm,request(5),ierr)
+        
+        call MPI_Irecv(old(Mp+1,1),1, v_halo_type, nbrs(right) ,0,cart_comm,request(4),ierr)
+        call MPI_Irecv(old(0,1)   ,1, v_halo_type, nbrs(left) ,0,cart_comm,request(2),ierr)
+        call MPI_Irecv(old(1,0),1, h_halo_type, nbrs(down), 0,cart_comm,request(6),ierr)
+        call MPI_Irecv(old(1,Np+1)   ,1, h_halo_type, nbrs(up) ,0,cart_comm,request(8),ierr)
+        
+        call MPI_Waitall(8,request,stats,ierr)
 
     end subroutine mpi_send_halos
 
