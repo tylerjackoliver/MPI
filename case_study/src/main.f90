@@ -7,30 +7,18 @@
 
 program main
 
-#ifdef PARALLEL1d
+#ifdef PARALLEL2d
 
-    use wrappers_1d
-
-#elif PARALLEL2d
-    
     use wrappers_2d
 
 #elif SERIAL 
 
+    use mpi,    only :: mpi_wtime
     use serial
 
 #endif
 
     implicit none
-
-    !
-    ! Variable declarations for PGM file I/O
-    !
-
-    integer                             :: i                ! Loop variables
-    integer                             :: j                ! Loop variables
-    
-    integer                             :: num_iters
 
     !
     ! PGM data arrays
@@ -42,35 +30,71 @@ program main
     double precision, allocatable       :: edge(:,:)        ! Array containing edge values
     double precision, allocatable       :: masterbuf(:,:)   ! Data array for rank 0
 
+    !
+    ! Algorithm variables
+    !
+
     double precision, parameter         :: frac = .25d0     ! Optimisation: compute fraction
 
     double precision                    :: delta_global = 10! Delta flag: set unnecessarily high
-
     double precision                    :: local_delta = 100
 
+    integer                             :: i                ! Loop variables
+    integer                             :: j                ! Loop variables
+    integer                             :: num_iters
+
+    !
+    ! Timing variables
+    !
+
+    double precision                    :: time_start
+    double precision                    :: time_finish
 
     !
     ! Execute program
     !
 
-    ! Define x and y dimensions
-
-    ! Now allocate data arrays
+    !
+    ! In order to initialise our MPI runtime, topology and custom datatypes, we first need
+    ! to allocate nbrs and dims to be assigned in the function.
+    !
+    ! If running serially, these arrays are not needed, but they cannot be assigned in the
+    ! initialise() subroutine call so they must be done here for all runtimes.
+    !
 
     allocate(nbrs(num_dims*2))
     allocate(dims(num_dims))
 
-    ! Initialise MPI, compute the size and the rank of the array
+    !
+    ! In parallel runtimes: initialise MPI, cartesian topology (2D), get the rank and size of the new pool.
+    !                       Get arrangement of processors in the new topology(dims) and their communicator (cart_comm)
+    !                       Print welcome message.
+    !
+    ! In serial runtimes:   Print welcome message. 
+    !                       Set rank = 0.
+    !                       Set all other variables = -1.
+    !
 
     call initialise(pool_size, rank, nbrs, dims, cart_comm)
+
+    !
+    ! Initialise data arrays for the algorithm, based on the size of the problem.
+    ! Serially, Mp = M, Np = N.
+    !
+    ! Mp, Np, M, N provided by the problem_constants module.
+    !
 
     allocate(masterbuf(M, N))
     allocate(old(0:Mp+1, 0:Np+1))
     allocate(new(0:Mp+1, 0:Np+1))
     allocate(edge(Mp, Np))
-    allocate(buf(Mp, Np))
+    allocate(buf(Mp, Np)) ! Potentially not needed
 
-    ! Step 1: read the edges data file into the buffer
+    !
+    ! Read the input file given by fname into masterbuf: in parallel runs, done only on rank 0.
+    !
+    ! fname provided by the problem_constants module.
+    !
 
     if (rank .eq. 0) then
 
@@ -78,36 +102,58 @@ program main
 
     end if
 
-    ! Now we've read it on the master thread, time to scatter to all procs
+    !
+    ! In parallel runtimes, we now need to send the data to all the other processors:
+    ! go from masterbuf into edge.
+    !
+    ! We do this using SCATTERV for the parallel case using custom vector and subarray types.
+    ! For serial, we just set edge = masterbuf.
     !
 
     call send_data(masterbuf, Mp*Np, edge, Mp * Np, cart_comm)
 
-    ! Step 2: loop over M, N
-
-    if (rank .eq. 0) then
-
-        write(*,*) "Setting up arrays..."
-
-    end if
+    ! Set all entries in the old array to 255, as part of the algorithm.
 
     old(:,:) = 255
 
-    if (rank .eq. 0) then 
+    call util_print_onrank0("Iterating...", rank)
 
-        write(*,*) "Iterating..."
-
-    end if
-
-    ! Step 3: Iterate through our edges
+    ! Initialise the iteration counter
 
     num_iters = 0
 
-    do while (delta_global > 0.1 .and. num_iters < max_iters)
+    ! We use a stopping criterion for the algorithm below:
+    ! we want to proceed while the criterion is less than our threshold, and
+    ! we haven't hit the maximum allowed number of iterations.
+    !
+    ! In order to properly time the execution, we'll also use an MPI_BARRIER
+    ! and mpi_wtime() here. mpi_wtime() is used even if we're running
+    ! serially.
 
-        ! We first need to send the halos from the left and right processes
+#ifdef PARALLEL2d
+
+    call MPI_BARRIER(cart_comm, ierr)
+
+#endif
+
+    time_start = mpi_wtime()
+
+    do while (delta_global > stopping_criterion .and. num_iters < max_iters)
+
+#ifdef PARALLEL2d        
+
+        !
+        ! We must first transfer our 'halo' regions - our overlaps - when running
+        ! in parallel.
+        !
 
         call mpi_send_halos(num_dims, old, Np, M, dims, nbrs, cart_comm)
+
+#endif
+
+        !
+        ! Perform the main computation loop: update new based on old and edge.
+        !
 
         do j = 1, Np
 
@@ -121,57 +167,79 @@ program main
 
         end do
 
+        !
+        ! If we're at an iteration specified to be one of our checking iterations
+        ! (we compute the stopping criterion here only, to save computational time),
+        ! then compute the criterion, and print a progress message.
+        !
+
         if ((mod(num_iters, check_int) .eq. 0)) then
 
-            call mpi_get_average(new, M, N, cart_comm, average)
-
-            call util_get_local_delta(new, old, local_delta)
-            call mpi_get_global_delta(num_dims, local_delta, cart_comm, delta_global)
-
-            call util_print_average_max(average, delta_global, num_iters, rank)
+            call check_criterion(new, old, cart_comm, num_dims, num_iters, average, delta_global)
 
         end if
 
+        !
+        ! Now copy new into old for the next loop.
+        ! util_array_copy performs additional error checking.
+        !
+
         call util_array_copy(old(1:Mp, 1:Np), new(1:Mp, 1:Np))
+
+        ! Update the iteration counter.
 
         num_iters = num_iters + 1
 
     end do
 
-    if (rank .eq. 0) then
+    !
+    ! Now that this loop has completed, we want to re-time.
+    !
 
-        write(*,*) "Done! After", num_iters, "Copying back..."
+#ifdef PARALLEL2d
 
-    end if
+    call MPI_BARRIER(cart_comm, ierr)
 
-    ! Step 4: copy old array back to buf
+#endif
 
-    call util_array_copy(buf(1:Mp, 1:Np), old(1:Mp, 1:Np))
+    time_finish = mpi_wtime()
 
-    ! Now gather from buf back to masterbuf
+    ! Call a subroutine that prints the appropriate status message for the completion of the loop.
+    ! If num_iters = max_iters, an error is thrown. Else, a print of the time is given.
 
-    call mpi_gather_data(num_dims, old, Mp * Np, masterbuf, Mp * Np, cart_comm)
+    call util_printfinish(num_iters, time_start, time_finish, rank)
 
-    ! Write buf to image
+    ! Now we need to gather the data from all processors if running in parallel, or
+    ! copy our data from old to masterbuf if running serially.
+
+    call gather_data(num_dims, old, Mp * Np, masterbuf, Mp * Np, cart_comm)
+
+    ! Lastly, write masterbuf back to the image file. We only want rank 0 to do this,
+    ! so enclose in an if.
 
     if (rank .eq. 0) then
 
         call pgmwrite('write_192x128.pgm', masterbuf)
 
-        write(*,*) "Done"
-
     end if
+
+    ! Deallocate variables used in all cases of the program.
 
     deallocate(new)
     deallocate(edge)
     deallocate(old)
     deallocate(buf)
 
+    ! Deallocate variables used only in the parallel cases.
+
+#ifdef PARALLEL2d
+
     deallocate(dims)
     deallocate(nbrs)
 
-    call mpi_finalize(ierr)
+#endif
 
+    call finalise()
 
 end program main
 

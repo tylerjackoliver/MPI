@@ -89,7 +89,7 @@ module utility_functions
 
         if (rank .eq. 0) then
 
-            print '(A, I6, A, F5.1, A, F6.3)', "After ", num_iters, &
+            print '(A, I6, A, F6.1, A, F7.3)', "After ", num_iters, &
                                             " iterations the average is ", &
                                             average, " and the delta is ", delta
 

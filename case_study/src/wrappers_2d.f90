@@ -413,7 +413,7 @@ module wrappers_2d
 
     end subroutine mpi_get_global_delta
 
-    subroutine mpi_gather_data(num_dims, to_send, send_size, to_recv, recv_size, comm)
+    subroutine gather_data(num_dims, to_send, send_size, to_recv, recv_size, comm)
 
         integer,                          intent(in)        :: num_dims
 
@@ -433,7 +433,73 @@ module wrappers_2d
         call MPI_GATHERV(to_send, 1, subarray_type, to_recv, counts, displacements, master_type, &
                             0, comm, ierr)
 
-    end subroutine mpi_gather_data
+    end subroutine gather_data
+
+
+    subroutine check_criterion(new, old, cart_comm, num_dims, num_iters, average, delta_global)
+
+        double precision, dimension(:,:), intent(in)    :: new
+        double precision, dimension(:,:), intent(in)    :: old
+
+        integer,                          intent(in)    :: cart_comm
+        integer,                          intent(in)    :: num_dims
+        integer,                          intent(in)    :: num_iters
+
+        double precision,                 intent(out)   :: average
+        double precision,                 intent(out)   :: delta_global
+
+        double precision                                :: local_delta
+
+        call mpi_get_average(new, M, N, cart_comm, average)
+        call util_get_local_delta(new, old, local_delta)
+        call mpi_get_global_delta(num_dims, local_delta, cart_comm, delta_global)
+        call util_print_average_max(average, delta_global, num_iters, rank)
+
+    end subroutine check_criterion
+
+
+    subroutine util_printfinish(num_iters, time_start, time_finish, rank)
+
+        integer,            intent(in)  :: num_iters
+        
+        double precision,   intent(in)  :: time_start
+        double precision,   intent(in)  :: time_finish
+
+        integer,            intent(in)  :: rank
+
+        integer                         :: ierr
+
+        if (num_iters .eq. max_iters) then
+
+            call MPI_FINALIZE(ierr)
+            error stop "Maximum number of iterations reached. Stopping..."
+        
+        end if
+
+        if (rank .eq. 0) then
+
+            print '(A)',          "  ****************************************************************"
+            print '(A, F8.4, A)', "             Finished computing in ", time_finish - time_start, " seconds."
+            print '(A)',          "  ****************************************************************"
+
+        end if
+
+    end subroutine
+
+    subroutine finalise()
+
+        integer :: ierr
+
+        ! Free the types we created
+
+        call MPI_TYPE_FREE(master_type, ierr)
+        call MPI_TYPE_FREE(subarray_type, ierr)
+        call MPI_TYPE_FREE(h_halo_type, ierr)
+        call MPI_TYPE_FREE(v_halo_type, ierr)
+
+        call MPI_FINALIZE(ierr)
+
+    end subroutine finalise
 
 
 end module wrappers_2d
