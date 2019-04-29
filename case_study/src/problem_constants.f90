@@ -4,12 +4,14 @@ module problem_constants
 
     PUBLIC
 
-    integer, parameter :: num_dims = 2
-    integer, parameter :: nbrs_len = 4  ! Must be twice nbrs_len
-    integer, parameter :: P = 2
-    integer, parameter :: M = 192
-    integer, parameter :: N = 128
-    integer, parameter :: max_iters = 10000
-    integer, parameter :: check_int = 100
+    integer,      parameter :: num_dims = 2
+    integer,      parameter :: nbrs_len = 4  ! Must be twice nbrs_len
+    integer,      parameter :: P = 2
+    integer,      parameter :: M = 192
+    integer,      parameter :: N = 128
+    integer,      parameter :: max_iters = 10000
+    integer,      parameter :: check_int = 100
+
+    character(*), parameter :: fname = "edge192x128.pgm"
 
 end module problem_constants

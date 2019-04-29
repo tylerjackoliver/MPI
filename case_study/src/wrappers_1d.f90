@@ -16,40 +16,8 @@ module wrappers_1d
     contains
 
 
-        subroutine mpi_send_data(num_dims, to_send, size_to_send, to_recv, size_to_recv, comm)
+        subroutine send_data(to_send, size_to_send, to_recv, size_to_recv, comm)
                 
-            integer,                          intent(in)    :: num_dims 
-
-            double precision, dimension(:,:), intent(in)    :: to_send
-            
-            integer,                          intent(in)    :: size_to_send
-            
-            double precision, dimension(:,:), intent(inout) :: to_recv
-
-            integer,                          intent(in)    :: size_to_recv
-            integer,                          intent(in)    :: comm
-
-            integer                                         :: ierr
-
-            if (num_dims .eq. 0) then
-
-                to_recv = to_send
-
-            else if (num_dims .eq. 1) then
-
-                call mpi_send_data_1d(to_send, size_to_send, to_recv, size_to_recv, comm)
-
-            elseif (num_dims .eq. 2) then
-
-                call mpi_send_data_2d(to_send, size_to_send, to_recv, size_to_recv, comm)
-
-            end if
-
-        end subroutine
-
-
-        subroutine mpi_send_data_1d(to_send, size_to_send, to_recv, size_to_recv, comm)
-
             double precision, dimension(:,:), intent(in)    :: to_send
             
             integer,                          intent(in)    :: size_to_send
@@ -64,28 +32,7 @@ module wrappers_1d
             call MPI_SCATTER(to_send, size_to_send, MPI_DOUBLE_PRECISION, to_recv, &
                             size_to_recv, MPI_DOUBLE_PRECISION, 0, comm, ierr)
 
-            ! call mpi_send_data(num_dims, masterbuf, Mp*Np, buf, Mp * Np, cart_comm)
-
-        end subroutine mpi_send_data_1d
-
-
-        subroutine mpi_send_data_2d(to_send, size_to_send, to_recv, size_to_recv, comm)
-
-            double precision, dimension(:,:), intent(in)    :: to_send
-            
-            integer,                          intent(in)    :: size_to_send
-            
-            double precision, dimension(:,:), intent(inout) :: to_recv
-
-            integer,                          intent(in)    :: size_to_recv
-            integer,                          intent(in)    :: comm
-
-            integer                                         :: ierr
-
-            ! call MPI_Scatterv(to_send, counts, displacements, master_type, &
-            !                   to_recv, Mp*Np, MPI_DOUBLE_PRECISION, 0, comm, ierr)
-
-        end subroutine mpi_send_data_2d
+        end subroutine
 
 
         subroutine get_comm_size(comm, size)
@@ -100,9 +47,7 @@ module wrappers_1d
         end subroutine get_comm_size
 
 
-        subroutine mpi_initialise(num_dims, pool_size, rank, nbrs, dims, cart_comm)
-
-            integer, intent(in)     :: num_dims
+        subroutine initialise(pool_size, rank, nbrs, dims, cart_comm)
 
             integer, intent(out)    :: pool_size
             integer, intent(out)    :: rank
@@ -138,16 +83,15 @@ module wrappers_1d
             Mp = M
             Np = ceiling(dble(N/P))                                ! Assumes N/P is perfect
             
-            call initialise_standard_topology_1d(num_dims, dims, cart_comm, nbrs, rank)
+            call initialise_standard_topology_1d(dims, cart_comm, nbrs, rank)
 
-        end subroutine
+        end subroutine initialise
 
-        subroutine initialise_standard_topology_1d(num_dims, dims, cart_comm, nbrs, rank)
+        subroutine initialise_standard_topology_1d(dims, cart_comm, nbrs, rank)
             ! initialise_new_standard_topology_1d(num_dims, dims, cart_comm, nbrs, rank)
 
             use neighbour_indexes
 
-            integer,               intent(in)       :: num_dims
             integer, dimension(:), intent(inout)    :: dims
             integer,               intent(out)      :: cart_comm
             integer, dimension(:), intent(inout)    :: nbrs
@@ -163,10 +107,12 @@ module wrappers_1d
             integer                                 :: i
 
             integer                                 :: pool_size
+            integer                                 :: num_dims
 
             reorder      = .false.
             x_dir        = 0
             displacement = 1
+            num_dims     = 1
 
             ! Set dims to zero and periodic to false
 
