@@ -1,50 +1,67 @@
 module wrappers_2d
 
-    use problem_constants
-    use mpi
-    use utility_functions
-    use neighbour_indexes
-    use pgmio     
+    ! Modules
+
+    use problem_constants                                           ! Defines fixed problem variables
+    use mpi                                                         ! Provides distributed parallelism
+    use utility_functions                                           ! Provides common non-MPI subroutines
+    use neighbour_indexes                                           ! Provides standard nbrs array indices
+    use pgmio                                                       ! Provides IO routines for PGM files
 
     implicit none
 
     PUBLIC
 
-    integer                             :: Mp
-    integer                             :: Np
+    integer                             :: Mp                       ! Horizontal chunk per processor
+    integer                             :: Np                       ! Vertical chunk per processor
 
     !
     ! MPI variable initialisation
     !
 
-    integer                             :: master_type
-    integer                             :: subarray_type
-    integer                             :: v_halo_type
-    integer                             :: h_halo_type
-    integer                             :: cart_comm
+    integer                             :: master_type              ! New MPI type to read from M x N data array
+    integer                             :: subarray_type            ! MPI type to read to Mp x Np data array (resized)
+    integer                             :: v_halo_type              ! MPI vector to send vertical halos
+    integer                             :: h_halo_type              ! MPI vector to send horizontal halos
+    integer                             :: cart_comm                ! New commmunicator for cartesian topology
 
-    integer                             :: rank
-    integer                             :: pool_size
-    integer                             :: ierr
+    integer                             :: rank                     ! Processor rank
+    integer                             :: pool_size                ! Size of the worker pool
+    integer                             :: ierr                     ! Integer error code
 
-    integer, dimension(8)               :: request
+    integer, dimension(8)               :: request                  ! Send/receive request status
 
     !
     ! Cartesian topology
     !
 
-    integer, allocatable                :: dims(:)          ! Array of size num_dims: alloc later
-    integer, allocatable                :: nbrs(:)        ! Array for addresses of neighbours
+    integer, allocatable                :: dims(:)                  ! Array holding topology dimensions: 2 * num_dims
+    integer, allocatable                :: nbrs(:)                  ! Array for addresses of neighbours: 2 * dims
 
-    double precision                    :: average
+    double precision                    :: average                  ! Average value of the image data array
 
-    integer, allocatable                :: counts(:)
-    integer, allocatable                :: displacements(:)
+    integer, allocatable                :: counts(:)                ! Array to hold the number of elements for the resized subarray
+    integer, allocatable                :: displacements(:)         ! Array to hold the displacements for the resized subarray
 
     contains
 
 
     subroutine mpi_define_vectors(num_dims, dims, pool_size, Mp, Np)
+
+        !
+        ! MPI_DEFINE_VECTORS
+        ! ~~~~~~~~~~~~~~~~~~
+        !
+        ! Creates and commits the supplementary MPI types used in the program.
+        !
+        ! Inputs
+        ! ~~~~~~
+        ! num_dims: Number of dimensions in the problem. Type: integer.
+        ! dims: Assigned dimensions.                     Type: 1-d integer array.
+        ! pool_size: Number of workers in the pool.      Type: integer.
+        ! Mp: Horizontal chunk size.                     Type: integer.
+        ! Np: Vertical chunk size.                       Type: integer.
+        !
 
         integer,                    intent(in)  :: num_dims
         integer,                    intent(in)  :: pool_size
@@ -94,8 +111,8 @@ module wrappers_2d
         call MPI_TYPE_CREATE_SUBARRAY(num_dims, sizes, subsizes, starts, &
                                       MPI_ORDER_FORTRAN, MPI_DOUBLE_PRECISION, subarray_type, ierr)
     
-        ! Create the master block, whih provides an array to convert directly from the master buffer
-        ! to the working thread
+        ! Create the temporary master block, whih provides an array to convert directly from the master buffer
+        ! to the working thread. This will soon be resized into the true master block.
 
         ! Original size of the masterbuf
 
@@ -125,6 +142,7 @@ module wrappers_2d
 
         call MPI_TYPE_VECTOR(1, Mp, Mp, MPI_DOUBLE_PRECISION, h_halo_type, ierr)
 
+        !
         ! So that we can use SCATTERV in the two-dimensional topology, we need to
         ! resize the original master block to fit properly into each quadrant of the
         ! domain. We can do this using MPI_CREATE_RESIZED after getting the length
@@ -146,6 +164,8 @@ module wrappers_2d
         call MPI_TYPE_COMMIT(v_halo_type, ierr)
         call MPI_TYPE_COMMIT(h_halo_type, ierr)
 
+        ! Deallocate arrays we're no longer usingcounts
+
         deallocate(sizes)
         deallocate(subsizes)
         deallocate(starts)
@@ -153,6 +173,28 @@ module wrappers_2d
     end subroutine mpi_define_vectors
 
     subroutine compute_counts_displacements(num_dims, dims, pool_size, Np, counts, displacements)
+        
+        !
+        ! COMPUTE_COUNTS_DISPLACEMENTS
+        ! ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        !
+        ! Initialises the counts and displacements arrays for use in 
+        ! SCATTERV and GATHERV subroutines.
+        !
+        ! Inputs
+        ! ~~~~~~
+        ! num_dims: Number of dimensions in the problem. Type: integer.
+        ! dims: Assigned dimensions.                     Type: 1-d integer array.
+        ! pool_size: Number of workers in the pool.      Type: integer.
+        ! Np: Vertical chunk size.                       Type: integer.
+        !
+        ! Outputs
+        ! ~~~~~~
+        ! counts: Specifies the number of elements to
+        !         send to each processor.                Type: 1-d integer array.
+        ! displacements: displacement from which to take
+        !                the outgoing data to process.   Type: 1-d integer array.
+        !
 
         integer,               intent(in)       :: num_dims
 
@@ -171,7 +213,10 @@ module wrappers_2d
 
         do i = 1, pool_size
 
+                ! Counts is always one
+
                 counts(i) = 1
+
                 displacements(i) = (baseline-1) + mod(i-1, dims(1))
 
                 if (mod(i, dims(1)) .eq. 0) then
@@ -187,6 +232,28 @@ module wrappers_2d
 
     subroutine initialise(pool_size, rank, nbrs, dims, cart_comm)
 
+        !
+        ! INITIALISE prepares the environment for the MPI runtime:
+        ! it checks the size of the pool is as expected, initialises
+        ! a cartesian topolog, computes the counts and displacements and
+        ! initialises the vectors and custom types to be used.
+        !
+        ! Inputs & Outputs
+        ! ~~~~~~~~~~~~~~~~
+        ! nbrs: Array containing the locations of 
+        !       each processors neigbours.          Type: 1-d integer array.
+        ! dims: Array containing the dimensions of
+        !       the new cartesian topology.         Type: 1-d integer array.     
+        ! 
+        ! Outputs
+        ! ~~~~~~~
+        ! pool_size: Number of workers in the pool. Type: integer.
+        ! rank: identifier of the current
+        !       processor.                          Type: integer.
+        ! cart_comm: New communicator for the
+        !            cartesian topology.            Type: integer
+        !
+
         integer, intent(out)                    :: pool_size
         integer, intent(out)                    :: rank
 
@@ -195,28 +262,40 @@ module wrappers_2d
 
         integer,               intent(out)      :: cart_comm
 
-        integer                                 :: i
-        integer                                 :: ierr
-        integer                                 :: comm
+        integer                                 :: i                                ! Loop variable
+        integer                                 :: comm                             ! Old communicator
 
-        ! Allocate data arrays
+        ! Initialise MPI
 
         call MPI_INIT(ierr)
 
         comm = MPI_COMM_WORLD
 
+        ! Get the size of the pool
+
         call MPI_COMM_SIZE(comm, pool_size, ierr)
+
+        ! Initialise a 2-d cartesian topology
 
         call mpi_initialise_standard_topology(num_dims, dims, cart_comm, nbrs, rank)
 
+        ! Print a welcome message
+
         call util_print_welcomemessage(rank)
+
+        ! Allocate arrays used in counts and displacements.
 
         allocate(counts(pool_size))
         allocate(displacements(pool_size))
 
-        call compute_counts_displacements(num_dims, dims, pool_size, Np, counts, displacements)
+        call compute_counts_displacements(num_dims, dims, pool_size, Np, counts, &
+                                         displacements)
+
+        ! Define our custom mpi datatypes
 
         call mpi_define_vectors(num_dims, dims, pool_size, Mp, Np)
+
+        ! Print a wonderfully informative message.
 
         call util_print_onrank0("Computing on a two-dimensional grid.", rank)
 
@@ -225,29 +304,54 @@ module wrappers_2d
 
     subroutine mpi_initialise_standard_topology(num_dims, dims, cart_comm, nbrs, rank)
 
+        ! MPI_INITIALISE_STANDARD_TOPOLOGY
+        !
         ! Creates a 2D cartesian communicator with the appropriate dimensions,
-        ! compute the neighbours for each process and computes the MP and NP
-        ! At the end calls the routine to create the derived datatypes
+        ! computes the neighbours for each process and computes MP and NP for
+        ! this problem.
+        !
+        ! Inputs
+        ! ~~~~~~
+        ! num_dims: Number of dimensions in the problem. Type: integer
+        !
+        ! Inputs & Outputs
+        ! ~~~~~~~~~~~~~~~~
+        ! dims: array containing the length in each 
+        !       dimension.                               Type: 1-d integer array
+        ! nbrs: Array containing the locations of 
+        !       each processors neigbours.               Type: 1-d integer array.
+        !
+        ! Outputs
+        ! ~~~~~~~
+        ! cart_comm: New communicator for the cartesian
+        !            topology.                           Type: integer
+        ! rank: Identifier for this processor.           Type: integer
         
         integer,               intent(in)       :: num_dims
+
         integer, dimension(:), intent(inout)    :: dims
+
         integer,               intent(out)      :: cart_comm
+
         integer, dimension(:), intent(inout)    :: nbrs
 
         integer,               intent(out)      :: rank
 
-        logical                                 :: periodic(2)
-        logical                                 :: reorder
+        logical                                 :: periodic(2)                          ! Tracks whether we want periodic boundaries              
+        logical                                 :: reorder                              ! Tracks whether we want to re-order ranks for speed
 
-        integer                                 :: ierr
-        integer                                 :: x_dir
-        integer                                 :: y_dir
-        integer                                 :: displacement
-        integer                                 :: i
-
-        integer                                 :: pool_size
+        integer                                 :: x_dir                                ! x-direction in our cartesian shift
+        integer                                 :: y_dir                                ! y-direction in our cartesian shift
+        integer                                 :: displacement                         ! displacement: step to take in cartesian shift
+        integer                                 :: i                                    ! Loop counter
+        integer                                 :: pool_size                            ! Number of workers in the pool
         
+        ! Get the size of the pool
+
         call MPI_COMM_SIZE(MPI_COMM_WORLD, pool_size, ierr)
+
+        ! Initialise dims to zero so that it may be populated, and periodic to false
+        ! so we have non-periodic boundary conditions on the nodes
 
         do i = 1, pool_size
 
@@ -256,22 +360,28 @@ module wrappers_2d
 
         end do
 
+        ! Initialise the remainder of our variables
+
         reorder      = .false.
         x_dir        = 0
         y_dir        = 1
         displacement = 1
 
-        ! Create cartesian topology 2D
+        ! Create 2D cartesian topology
 
         call MPI_DIMS_CREATE(pool_size, num_dims, dims, ierr)
 
-        ! 28/04 JT: Dimensions shifted to be consistent with Fortran order
+        ! Create the cartesian topology: dimensions are shifted to be consistent
+        ! with Fortran array ordering.
 
-        call MPI_CART_CREATE(MPI_COMM_WORLD, num_dims, (/dims(2), dims(1)/), periodic, reorder, cart_comm, ierr)
+        call MPI_CART_CREATE(MPI_COMM_WORLD, num_dims, (/dims(2), dims(1)/), &
+                             periodic, reorder, cart_comm, ierr)
         
+        ! Get this processor's rank
+
         call MPI_COMM_RANK(cart_comm, rank, ierr)
         
-        ! Get neighbours
+        ! Get neighbours - up and down
 
         call MPI_CART_SHIFT(cart_comm, y_dir, displacement, nbrs(left), nbrs(right), ierr)
         call MPI_CART_SHIFT(cart_comm, x_dir, displacement, nbrs(down), nbrs(up), ierr)
