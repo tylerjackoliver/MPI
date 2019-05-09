@@ -402,6 +402,24 @@ module wrappers_2d
 
 
     subroutine send_data(to_send, size_to_send, to_recv, size_to_recv, comm)
+
+        !
+        ! send_data controls the initial transfer of data from the master buffer
+        ! to all other working processes.
+        !
+        ! Inputs
+        ! ~~~~~~
+        !
+        ! to_send: Array of data to send. Type: 2-d double precision.
+        ! counts:  Number of elements to send. Type: integer
+        ! size_to_recv: Number of elements to receive. Type: integer
+        ! comm: Communicator on which to perform the data send. Type: integer
+        ! 
+        ! Inputs & Outputs
+        ! ~~~~~~~~~~~~~~~~
+        ! 
+        ! to_recv: Array of data to receive into. Type: 2-d double precision
+        !
                 
         double precision, dimension(:,:), intent(in)    :: to_send
         
@@ -414,6 +432,8 @@ module wrappers_2d
 
         integer                                         :: ierr
 
+        ! Call SCATTERV: assumes counts and displacements have been previously defined
+        ! and populated.    
 
         call MPI_Scatterv(to_send, counts, displacements, master_type, &
                 to_recv, size_to_send, MPI_DOUBLE_PRECISION, 0, cart_comm, ierr)
@@ -423,8 +443,23 @@ module wrappers_2d
 
     subroutine mpi_send_halos(num_dims, old, Np, M, dims, nbrs, cart_comm)
 
-        integer,                            intent(in) :: num_dims
-        
+        !
+        ! mpi_send_halos transfers the halo regions of the image between each
+        ! processor
+        !
+        ! Inputs:
+        ! ~~~~~~~
+        ! Np: Height of image chunk. Type: integer
+        ! M: Width of original image. Type: integer
+        ! nbrs: Array of cartesian neighbours. Type: 1-d integer array
+        ! cart_comm: Cartesian communicator to use for the transfers. Type: integer
+        ! dims: Array of dimensions of the cartesian topology. Type: 1-d integer array.
+        !
+        ! Inputs & Outputs
+        ! ~~~~~~~~~~~~~~~~
+        ! old: Array to send data to and from. Type: 2-d double precision, indexed from 0
+        !
+
         double precision, dimension(0:,0:), intent(inout)   :: old
 
         integer,                          intent(in)        :: Np
@@ -438,44 +473,61 @@ module wrappers_2d
 
         integer                                             :: ierr
         integer, dimension(MPI_STATUS_SIZE,8)               :: stats
-        ! ! Send halos up, receive from down
 
-        ! call MPI_SENDRECV(old(1, Np), 1, h_halo_type, nbrs(up), 0, &
-        ! old(1,0), 1, h_halo_type, nbrs(down), 0, cart_comm, &
-        ! recv_status, ierr)
+        ! Send right
 
-        ! ! Send halos down, receive from up
-
-        ! call MPI_SENDRECV(old(1, 1), 1, h_halo_type, nbrs(down), 0, &
-        ! old(1, Np+1), 1, h_halo_type, nbrs(up), 0, cart_comm, &
-        ! recv_status, ierr)
-
-        ! ! Send halos right, receive from left
-
-        ! call MPI_SENDRECV(old(Mp, 1), 1, v_halo_type, nbrs(right), 0, &
-        ! old(0, 1), 1, v_halo_type, nbrs(left), 0, cart_comm, recv_status, ierr)
-
-        ! ! Send halos left, receive from right
-
-        ! call MPI_SENDRECV(old(1,1), 1, v_halo_type, nbrs(left), 0, &
-        ! old(Mp+1, 1), 1, v_halo_type, nbrs(right), 0, cart_comm, recv_status, ierr)
-
-        call MPI_Issend(old(Mp,1),1, v_halo_type, nbrs(right) ,0,cart_comm,request(1),ierr)
-        call MPI_Issend(old(1,1),1, v_halo_type, nbrs(left)   ,0,cart_comm,request(3),ierr)
-        call MPI_Issend(old(1,1), 1, h_halo_type, nbrs(down),0,cart_comm,request(7),ierr)
-        call MPI_Issend(old(1,Np), 1, h_halo_type, nbrs(up) ,0,cart_comm,request(5),ierr)
+        call MPI_Issend(old(Mp, 1), 1, v_halo_type, nbrs(right), 0, cart_comm, request(1), ierr)
         
-        call MPI_Irecv(old(Mp+1,1),1, v_halo_type, nbrs(right) ,0,cart_comm,request(4),ierr)
-        call MPI_Irecv(old(0,1)   ,1, v_halo_type, nbrs(left) ,0,cart_comm,request(2),ierr)
-        call MPI_Irecv(old(1,0),1, h_halo_type, nbrs(down), 0,cart_comm,request(6),ierr)
-        call MPI_Irecv(old(1,Np+1)   ,1, h_halo_type, nbrs(up) ,0,cart_comm,request(8),ierr)
+        ! Send left
+
+        call MPI_Issend(old(1, 1),  1, v_halo_type, nbrs(left),  0, cart_comm, request(3), ierr)
         
-        call MPI_Waitall(8,request,stats,ierr)
+        ! Send down
+
+        call MPI_Issend(old(1, 1),  1, h_halo_type, nbrs(down),  0, cart_comm, request(7), ierr)
+        
+        ! Send up
+
+        call MPI_Issend(old(1, Np), 1, h_halo_type, nbrs(up),    0, cart_comm, request(5), ierr)
+        
+        ! Receive from right
+
+        call MPI_Irecv(old(Mp+1, 1), 1, v_halo_type, nbrs(right), 0, cart_comm, request(4), ierr)
+        
+        ! Receive from left
+        
+        call MPI_Irecv(old(0, 1),    1, v_halo_type, nbrs(left),  0, cart_comm, request(2), ierr)
+       
+        ! Receive from below
+
+        call MPI_Irecv(old(1, 0),    1, h_halo_type, nbrs(down),  0, cart_comm, request(6), ierr)
+        
+        ! Receive from above
+        
+        call MPI_Irecv(old(1, Np+1), 1, h_halo_type, nbrs(up),    0, cart_comm, request(8), ierr)
+        
+        ! Wait for all the transfers to complete
+
+        call MPI_Waitall(8, request, stats, ierr)
 
     end subroutine mpi_send_halos
 
 
     subroutine mpi_get_average(array, M, N, comm, average)
+
+        ! mpi_get_average computes the average value of the elements in array
+        !
+        ! Inputs
+        ! ~~~~~~
+        ! array: Array to compute the average of elements in. Type: 2-d array of double precision
+        ! comm: Cartesian communicator to reduce the data from
+        ! M: Width of original image. Type: integer
+        ! N: Height of original image. Type: integer
+        ! 
+        ! Outputs
+        ! ~~~~~~~
+        ! Average: average value of elements in array. Type: double precision.
+        !
 
         double precision, dimension(:,:), intent(in)    :: array 
 
@@ -489,18 +541,39 @@ module wrappers_2d
 
         double precision                                :: local_sum
         
+
+        ! Get the local sum of all the values in the local versions of arrays
+
         local_sum = sum(array)
 
+        ! Reduce all the local sums onto every processor, taking the sum of every value
+
         call MPI_ALLREDUCE(local_sum, average, 1, MPI_DOUBLE_PRECISION, MPI_SUM, comm, ierr)
+
+        ! Normalise to the size of the matrix: integer division should be promoted to double precision by all
+        ! compilers
 
         average = average / ( M * N )
 
     end subroutine mpi_get_average
 
 
-    subroutine mpi_get_global_delta(num_dims, delta, comm, global_delta)
+    subroutine mpi_get_global_delta(delta, comm, global_delta)
 
-        integer,                          intent(in)    :: num_dims
+        !
+        ! mpi_get_global_delta computes the maximum change between two iterations
+        ! of the algorithm across all processors.
+        !
+        ! Inputs
+        ! ~~~~~~
+        !
+        ! delta: Local value of the change between two iterations. Type: double precision
+        ! comm: Communicator to reduce on. Type: integer
+        !
+        ! Outputs
+        ! ~~~~~~~
+        ! global_delta: Maximum delta across all processors. Type: double precision
+        !
 
         double precision,                 intent(in)    :: delta
 
@@ -510,22 +583,30 @@ module wrappers_2d
 
         integer                                         :: ierr
 
-        if (num_dims .eq. 0) then
-
-            global_delta = delta
-
-        else
-
-            call MPI_ALLREDUCE(delta, global_delta, 1, MPI_DOUBLE_PRECISION, &
+        call MPI_ALLREDUCE(delta, global_delta, 1, MPI_DOUBLE_PRECISION, &
                             MPI_MAX, comm, ierr)
-
-        end if
 
     end subroutine mpi_get_global_delta
 
-    subroutine gather_data(num_dims, to_send, send_size, to_recv, recv_size, comm)
 
-        integer,                          intent(in)        :: num_dims
+    subroutine gather_data(to_send, send_size, to_recv, recv_size, comm)
+
+        !
+        ! gather_data retrieves the data from all other processors at the end of
+        ! the computation
+        !
+        ! Inputs
+        ! ~~~~~~
+        ! to_send: Array to send to the master process. Type: 2-d double precision array.
+        ! send_size: Size of the array to send. Type: integer.
+        ! recv_size: Size of the array to receive. Type: integer.
+        ! comm: Communicator to gather from. Type: integer.
+        !
+        ! Outputs
+        ! ~~~~~~~
+        !
+        ! to_recv: Array to receive data into. Type: 2-d double precision array.
+        !
 
         double precision, dimension(:,:), intent(in)        :: to_send
 
@@ -546,13 +627,31 @@ module wrappers_2d
     end subroutine gather_data
 
 
-    subroutine check_criterion(new, old, cart_comm, num_dims, num_iters, average, delta_global)
+    subroutine check_criterion(new, old, cart_comm, num_iters, average, delta_global)
+
+        !
+        ! check_criterion is a wrapping function that allows the determination of the global
+        ! delta, local delta, average value of an array, and also prints a status message.
+        !
+        ! Inputs
+        ! ~~~~~~
+        !
+        ! new: Array of values at the current time-step. Type: 2-d double precision.
+        ! old: Array of values ar the previous time-step. Type: 2-d double precision.
+        ! cart_comm: Communicator used to retrieve data. Type: integer.
+        ! num_iters: Number of iterations that have been performed. Type: integer.
+        !
+        ! Outputs
+        ! ~~~~~~~
+        ! 
+        ! average: Average value of the new array. Type: 2-d double precision array.
+        ! delta_global: Maximum difference between old and new across all processors. Type: double precision.
+        !
 
         double precision, dimension(:,:), intent(in)    :: new
         double precision, dimension(:,:), intent(in)    :: old
 
         integer,                          intent(in)    :: cart_comm
-        integer,                          intent(in)    :: num_dims
         integer,                          intent(in)    :: num_iters
 
         double precision,                 intent(out)   :: average
@@ -562,13 +661,24 @@ module wrappers_2d
 
         call mpi_get_average(new, M, N, cart_comm, average)
         call util_get_local_delta(new, old, local_delta)
-        call mpi_get_global_delta(num_dims, local_delta, cart_comm, delta_global)
+        call mpi_get_global_delta(local_delta, cart_comm, delta_global)
         call util_print_average_max(average, delta_global, num_iters, rank)
 
     end subroutine check_criterion
 
 
     subroutine util_printfinish(num_iters, time_start, time_finish, rank)
+
+        !
+        ! util_printfinish prints a message to stdout that gives the total time of the computation.
+        !
+        ! Inputs
+        ! ~~~~~~
+        ! num_iters: Number of iterations performed. Type: integer.
+        ! time_start: CPU time at the start of the computation. Type: double precision.
+        ! time_finish: CPU time at the end of the computation. Type: double precision.
+        ! rank: Rank of the processor calling the function. Type: integer.
+        !
 
         integer,            intent(in)  :: num_iters
         
@@ -597,6 +707,10 @@ module wrappers_2d
     end subroutine
 
     subroutine finalise()
+
+        !
+        ! finalise completes the MPI runtime and frees the created types.
+        !
 
         integer :: ierr
 
