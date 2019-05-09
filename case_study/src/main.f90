@@ -147,7 +147,7 @@ program main
         ! in parallel.
         !
 
-        call mpi_send_halos(num_dims, old, Np, M, dims, nbrs, cart_comm)
+        call mpi_send_halos(old, Np, M, dims, nbrs, cart_comm)
 
 #endif
 
