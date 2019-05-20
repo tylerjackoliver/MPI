@@ -4,8 +4,6 @@
 ! Modified 25/4 to compute the average value of the numbers every 10% of iterations.
 ! Modified 25/4 to cease computation whenever the difference slips below 0.1.
 !
-! Modified 20/5 to modularise source code.
-!
 
 program main
 
@@ -60,15 +58,12 @@ program main
     ! In order to initialise our MPI runtime, topology and custom datatypes, we first need
     ! to allocate nbrs and dims to be assigned in the function.
     !
-    ! If running serially, these arrays are not needed, hence the #ifdef.
+    ! If running serially, these arrays are not needed, but they cannot be assigned in the
+    ! initialise() subroutine call so they must be done here for all runtimes.
     !
-
-#ifdef PARALLEL2d
 
     allocate(nbrs(num_dims*2))
     allocate(dims(num_dims))
-
-#endif
 
     !
     ! In parallel runtimes: initialise MPI, cartesian topology (2D), get the rank and size of the new pool.
@@ -152,7 +147,7 @@ program main
         ! in parallel.
         !
 
-        call mpi_send_halos(old, Np, M, dims, nbrs, cart_comm)
+        call mpi_send_halos(num_dims, old, Np, M, dims, nbrs, cart_comm)
 
 #endif
 
