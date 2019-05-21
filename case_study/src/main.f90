@@ -39,7 +39,6 @@ program main
     double precision, parameter         :: frac = .25d0     ! Optimisation: compute fraction
 
     double precision                    :: delta_global = 10! Delta flag: set unnecessarily high
-    double precision                    :: local_delta = 100
 
     integer                             :: i                ! Loop variables
     integer                             :: j                ! Loop variables
@@ -115,7 +114,7 @@ program main
     ! For serial, we just set edge = masterbuf.
     !
 
-    call send_data(masterbuf, Mp*Np, edge, Mp * Np, cart_comm)
+    call send_data(masterbuf, Mp*Np, edge, cart_comm)
 
     ! Set all entries in the old array to 255, as part of the algorithm.
 
@@ -152,7 +151,7 @@ program main
         ! in parallel.
         !
 
-        call mpi_send_halos(old, Np, M, dims, nbrs, cart_comm)
+        call mpi_send_halos(old, nbrs, cart_comm)
 
 #endif
 
@@ -180,7 +179,7 @@ program main
 
         if ((mod(num_iters, check_int) .eq. 0)) then
 
-            call check_criterion(new, old, cart_comm, num_dims, num_iters, average, delta_global)
+            call check_criterion(new, old, cart_comm, num_iters, average, delta_global)
 
         end if
 
@@ -217,7 +216,7 @@ program main
     ! Now we need to gather the data from all processors if running in parallel, or
     ! copy our data from old to masterbuf if running serially.
 
-    call gather_data(num_dims, old, Mp * Np, masterbuf, Mp * Np, cart_comm)
+    call gather_data(old, masterbuf, cart_comm)
 
     ! Lastly, write masterbuf back to the image file. We only want rank 0 to do this,
     ! so enclose in an if.
