@@ -37,16 +37,15 @@ module wrappers_2d
 
     integer, allocatable                :: dims(:)                  ! Array holding topology dimensions: 2 * num_dims
     integer, allocatable                :: nbrs(:)                  ! Array for addresses of neighbours: 2 * dims
-
-    double precision                    :: average                  ! Average value of the image data array
-
     integer, allocatable                :: counts(:)                ! Array to hold the number of elements for the resized subarray
     integer, allocatable                :: displacements(:)         ! Array to hold the displacements for the resized subarray
+
+    double precision                    :: average                  ! Average value of the image data array
 
     contains
 
 
-    subroutine mpi_define_vectors(num_dims, dims, pool_size, Mp, Np)
+    subroutine mpi_define_vectors(num_dims, dims, Mp, Np)
 
         !
         ! MPI_DEFINE_VECTORS
@@ -64,7 +63,6 @@ module wrappers_2d
         !
 
         integer,                    intent(in)  :: num_dims
-        integer,                    intent(in)  :: pool_size
         integer,                    intent(in)  :: Mp
         integer,                    intent(in)  :: Np
 
@@ -74,12 +72,10 @@ module wrappers_2d
         integer, allocatable                    :: subsizes(:)
         integer, allocatable                    :: starts(:)
 
-        integer                                 :: i
         integer                                 :: ierr
         integer                                 :: temp_type
 
         integer(kind=mpi_address_kind)          :: start
-        integer(kind=mpi_address_kind)          :: integer_extent
         integer(kind=mpi_address_kind)          :: lb           ! Lower bound
         integer(kind=mpi_address_kind)          :: double_extent
         integer(kind=mpi_address_kind)          :: tot_extent
@@ -172,7 +168,7 @@ module wrappers_2d
 
     end subroutine mpi_define_vectors
 
-    subroutine compute_counts_displacements(num_dims, dims, pool_size, Np, counts, displacements)
+    subroutine compute_counts_displacements(dims, pool_size, Np, counts, displacements)
         
         !
         ! COMPUTE_COUNTS_DISPLACEMENTS
@@ -195,8 +191,6 @@ module wrappers_2d
         ! displacements: displacement from which to take
         !                the outgoing data to process.   Type: 1-d integer array.
         !
-
-        integer,               intent(in)       :: num_dims
 
         integer, dimension(:), intent(in)       :: dims
         
@@ -262,7 +256,6 @@ module wrappers_2d
 
         integer,               intent(out)      :: cart_comm
 
-        integer                                 :: i                                ! Loop variable
         integer                                 :: comm                             ! Old communicator
 
         ! Initialise MPI
@@ -288,12 +281,12 @@ module wrappers_2d
         allocate(counts(pool_size))
         allocate(displacements(pool_size))
 
-        call compute_counts_displacements(num_dims, dims, pool_size, Np, counts, &
+        call compute_counts_displacements(dims, pool_size, Np, counts, &
                                          displacements)
 
         ! Define our custom mpi datatypes
 
-        call mpi_define_vectors(num_dims, dims, pool_size, Mp, Np)
+        call mpi_define_vectors(num_dims, dims, Mp, Np)
 
         ! Print a wonderfully informative message.
 
@@ -401,7 +394,7 @@ module wrappers_2d
     end subroutine mpi_initialise_standard_topology
 
 
-    subroutine send_data(to_send, size_to_send, to_recv, size_to_recv, comm)
+    subroutine send_data(to_send, size_to_send, to_recv, comm)
 
         !
         ! send_data controls the initial transfer of data from the master buffer
@@ -427,7 +420,6 @@ module wrappers_2d
         
         double precision, dimension(:,:), intent(inout) :: to_recv
 
-        integer,                          intent(in)    :: size_to_recv
         integer,                          intent(in)    :: comm
 
         integer                                         :: ierr
@@ -436,12 +428,12 @@ module wrappers_2d
         ! and populated.    
 
         call MPI_Scatterv(to_send, counts, displacements, master_type, &
-                to_recv, size_to_send, MPI_DOUBLE_PRECISION, 0, cart_comm, ierr)
+                to_recv, size_to_send, MPI_DOUBLE_PRECISION, 0, comm, ierr)
 
     end subroutine send_data
 
 
-    subroutine mpi_send_halos(num_dims, old, Np, M, dims, nbrs, cart_comm)
+    subroutine mpi_send_halos(old, nbrs, cart_comm)
 
         !
         ! mpi_send_halos transfers the halo regions of the image between each
@@ -462,33 +454,27 @@ module wrappers_2d
 
         double precision, dimension(0:,0:), intent(inout)   :: old
 
-        integer,                          intent(in)        :: Np
-        integer,                          intent(in)        :: M
         integer,          dimension(:),   intent(in)        :: nbrs
         integer,                          intent(in)        :: cart_comm
-
-        integer,          dimension(:),   intent(in)        :: dims
-
-        integer, dimension(mpi_status_size)                 :: recv_status      ! Receive status, non-blocking send
 
         integer                                             :: ierr
         integer, dimension(MPI_STATUS_SIZE,8)               :: stats
 
         ! Send right
 
-        call MPI_Issend(old(Mp, 1), 1, v_halo_type, nbrs(right), 0, cart_comm, request(1), ierr)
+        call MPI_Issend(old(Mp, 1), 1, v_halo_type, nbrs(right),  0, cart_comm, request(1), ierr)
         
         ! Send left
 
-        call MPI_Issend(old(1, 1),  1, v_halo_type, nbrs(left),  0, cart_comm, request(3), ierr)
+        call MPI_Issend(old(1, 1),  1, v_halo_type, nbrs(left),   0, cart_comm, request(3), ierr)
         
         ! Send down
 
-        call MPI_Issend(old(1, 1),  1, h_halo_type, nbrs(down),  0, cart_comm, request(7), ierr)
+        call MPI_Issend(old(1, 1),  1, h_halo_type, nbrs(down),   0, cart_comm, request(7), ierr)
         
         ! Send up
 
-        call MPI_Issend(old(1, Np), 1, h_halo_type, nbrs(up),    0, cart_comm, request(5), ierr)
+        call MPI_Issend(old(1, Np), 1, h_halo_type, nbrs(up),     0, cart_comm, request(5), ierr)
         
         ! Receive from right
 
@@ -589,7 +575,7 @@ module wrappers_2d
     end subroutine mpi_get_global_delta
 
 
-    subroutine gather_data(to_send, send_size, to_recv, recv_size, comm)
+    subroutine gather_data(to_send, to_recv, comm)
 
         !
         ! gather_data retrieves the data from all other processors at the end of
@@ -610,14 +596,9 @@ module wrappers_2d
 
         double precision, dimension(:,:), intent(in)        :: to_send
 
-        integer,                          intent(in)        :: send_size
-        
         double precision, dimension(:,:), intent(out)       :: to_recv
 
-        integer,                          intent(in)        :: recv_size
         integer,                          intent(in)        :: comm
-
-        integer, dimension(mpi_status_size)                 :: recv_status      ! Receive status, non-blocking send
 
         integer                                             :: ierr
 
