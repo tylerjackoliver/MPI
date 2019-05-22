@@ -268,6 +268,16 @@ module wrappers_2d
 
         call MPI_COMM_SIZE(comm, pool_size, ierr)
 
+        ! Check that we have the correct number of threads
+
+        if (pool_size .ne. P) then
+
+            call MPI_FINALIZE(ierr)
+            error stop "Incorrect number of processors specified."
+
+        end if
+
+
         ! Initialise a 2-d cartesian topology
 
         call mpi_initialise_standard_topology(num_dims, dims, cart_comm, nbrs, rank)
@@ -346,7 +356,7 @@ module wrappers_2d
         ! Initialise dims to zero so that it may be populated, and periodic to false
         ! so we have non-periodic boundary conditions on the nodes
 
-        do i = 1, pool_size
+        do i = 1, P
 
             dims(i) = 0
             periodic(i) = .false.
@@ -362,7 +372,7 @@ module wrappers_2d
 
         ! Create 2D cartesian topology
 
-        call MPI_DIMS_CREATE(pool_size, num_dims, dims, ierr)
+        call MPI_DIMS_CREATE(P, num_dims, dims, ierr)
 
         ! Create the cartesian topology: dimensions are shifted to be consistent
         ! with Fortran array ordering.
@@ -381,9 +391,13 @@ module wrappers_2d
     
         ! Compute the new array dimensions
 
+        print *, "the dimensions are:", dims(1), dims(2)
+
+
         if ( (mod(M, dims(1)) .ne. 0) .or. (mod(N, dims(2)) .ne. 0) ) then
 
             call MPI_FINALIZE(ierr)
+            print *, "Error: M or N is not divisible by the number of dimensions."
             error stop "Error: M or N is not divisible by the number of dimensions."
 
         end if
