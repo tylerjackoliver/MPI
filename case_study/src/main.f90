@@ -53,7 +53,6 @@ program main
 
     double precision                    :: time_io
     double precision                    :: time_iterating
-    double precision                    :: time_per_iteration
     double precision                    :: time_to_gather
     
     !
@@ -112,6 +111,14 @@ program main
     ! fname provided by the problem_constants module.
     !
 
+    ! Add a barrier to the processors
+
+#ifdef PARALLEL2d
+    call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+#endif    
+
+time_start = MPI_GET_WTIME()
+
     if (rank .eq. 0) then
 
         call pgmread(fname, masterbuf)
@@ -127,6 +134,14 @@ program main
     !
 
     call send_data(masterbuf, Mp*Np, edge, cart_comm)
+
+#ifdef PARALLEL2d
+    call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+#endif
+    
+    time_finish = MPI_GET_WTIME()
+
+    time_io = time_finish - time_start
 
     ! Set all entries in the old array to 255, as part of the algorithm.
 
@@ -220,6 +235,8 @@ program main
 
     time_finish = mpi_wtime()
 
+    time_iterating = time_finish - time_start
+
     ! Call a subroutine that prints the appropriate status message for the completion of the loop.
     ! If num_iters = max_iters, an error is thrown. Else, a print of the time is given.
 
@@ -228,7 +245,21 @@ program main
     ! Now we need to gather the data from all processors if running in parallel, or
     ! copy our data from old to masterbuf if running serially.
 
+#ifdef PARALLEL2d
+    call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+#endif    
+
+    time_start = mpi_wtime()
+
     call gather_data(old, masterbuf, cart_comm)
+
+#ifdef PARALLEL2d
+    call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+#endif    
+
+    time_finish = mpi_wtime()
+
+    time_gather = time_finish - time_start
 
     ! Lastly, write masterbuf back to the image file. We only want rank 0 to do this,
     ! so enclose in an if.
@@ -236,6 +267,7 @@ program main
     if (rank .eq. 0) then
 
         call pgmwrite('write_192x128.pgm', masterbuf)
+        call write_results(num_iters, time_io, time_iterating, time_gather)
 
     end if
 
