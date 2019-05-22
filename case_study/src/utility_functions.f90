@@ -1,5 +1,7 @@
 module utility_functions
 
+    use problem_constants
+
     implicit none
 
     contains
@@ -154,5 +156,38 @@ module utility_functions
 
     end subroutine util_print_welcomemessage
 
+
+    subroutine util_write_results(num_iters, time_io, time_iterating, time_gather)
+
+        !
+        ! Appends the results of this run to file "run_times.dat"
+        !
+
+        integer,          intent(in) :: num_iters
+
+        double precision, intent(in) :: time_io
+        double precision, intent(in) :: time_iterating
+        double precision, intent(in) :: time_gather
+
+        logical :: exist
+
+        inquire(file='run_times.dat', exist=exist)
+
+        if (exist) then
+
+            open(unit=55, file='run_times.dat', status='old', position='append')
+            write(*,*) "P, Iterations, IO Time, Iteration time, Time per iteration, Gather time"
+
+        else
+
+            open(unit=55, file='run_times.dat', status='new', action='write')
+
+        end if
+
+        write(55, '(I3, I6, 4F10.7)') P, num_iters, time_io, time_iterating, time_iterating/num_iters, time_gather
+
+        close(55)
+
+    end subroutine util_write_results
 
 end module utility_functions

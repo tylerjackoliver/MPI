@@ -474,13 +474,15 @@ module wrappers_2d
         integer                                             :: ierr
         integer, dimension(MPI_STATUS_SIZE,8)               :: stats
 
+        integer, dimension(MPI_STATUS_SIZE)                 :: stat
+
         ! Send right
 
 !        call MPI_Issend(old(Mp, 1), 1, v_halo_type, nbrs(right),  0, cart_comm, request(1), ierr)
         
         ! Send right, receive from the left
 
-        call MPI_SENDRECV(old(Mp, 1), 1, v_halo_type, nbrs(right), 0, old(0,1), 1, v_halo_type, nbrs(left), 0, cart_comm, stats(1))
+        call MPI_SENDRECV(old(Mp, 1), 1, v_halo_type, nbrs(right), 0, old(0,1), 1, v_halo_type, nbrs(left), 0, cart_comm, stat, ierr)
 
         ! Send left
 
@@ -488,7 +490,7 @@ module wrappers_2d
         
         ! Send left, receive from the right
 
-        call MPI_SENDRECV(old(1,1), 1, v_halo_type, nbrs(left), 1, old(Mp+1,1), 1, v_halo_type, nbrs(right), 1, cart_comm, stats(2))
+        call MPI_SENDRECV(old(1,1), 1, v_halo_type, nbrs(left), 1, old(Mp+1,1), 1, v_halo_type, nbrs(right), 1, cart_comm, stat, ierr)
 
         ! Send down
 
@@ -496,7 +498,7 @@ module wrappers_2d
         
         ! Send down, receive from up
 
-      call MPI_SENDRECV(old(1, Np), 1, h_halo_type, nbrs(down), 2, old(Np+1), 1, h_halo_type, nbrs(up), cart_comm, stats(3))
+      call MPI_SENDRECV(old(1, Np), 1, h_halo_type, nbrs(down), 2, old(1, Np+1), 1, h_halo_type, nbrs(up), 2, cart_comm, stat, ierr)
 
         ! Send up
 
@@ -504,7 +506,7 @@ module wrappers_2d
 
         ! Send up, receive from down
 
-        call MPI_SENDRECV(old(1, Np), 1, h_halo_type, nbrs(up), 3, old(1,0), 1, h_halo_type, nbrs(down), 3, cart_comm, stats(4))
+        call MPI_SENDRECV(old(1, Np), 1, h_halo_type, nbrs(up), 3, old(1,0), 1, h_halo_type, nbrs(down), 3, cart_comm, stat, ierr)
         
         ! Receive from right
 

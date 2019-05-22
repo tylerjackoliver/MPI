@@ -56,6 +56,12 @@ program main
     double precision                    :: time_to_gather
     
     !
+    ! Temporary variable for reading in P
+    !
+
+    character(len=4)                    :: P_char
+
+    !
     ! Execute program
     !
 
@@ -88,7 +94,9 @@ program main
     ! So that we can set P properly in batch runs, the program has been modified to take P in as a command-line argument.
     !
 
-    call get_command_argument(0, P)
+    call get_command_argument(1, P_char)
+    
+    read(P_char, '(I4)') P
 
     call initialise(pool_size, rank, nbrs, dims, cart_comm)
 
@@ -117,7 +125,7 @@ program main
     call MPI_BARRIER(MPI_COMM_WORLD, ierr)
 #endif    
 
-time_start = MPI_GET_WTIME()
+time_start = mpi_wtime()
 
     if (rank .eq. 0) then
 
@@ -139,7 +147,7 @@ time_start = MPI_GET_WTIME()
     call MPI_BARRIER(MPI_COMM_WORLD, ierr)
 #endif
     
-    time_finish = MPI_GET_WTIME()
+    time_finish = mpi_wtime()
 
     time_io = time_finish - time_start
 
@@ -259,7 +267,7 @@ time_start = MPI_GET_WTIME()
 
     time_finish = mpi_wtime()
 
-    time_gather = time_finish - time_start
+    time_to_gather = time_finish - time_start
 
     ! Lastly, write masterbuf back to the image file. We only want rank 0 to do this,
     ! so enclose in an if.
@@ -267,7 +275,7 @@ time_start = MPI_GET_WTIME()
     if (rank .eq. 0) then
 
         call pgmwrite('write_192x128.pgm', masterbuf)
-        call write_results(num_iters, time_io, time_iterating, time_gather)
+        call util_write_results(num_iters, time_io, time_iterating, time_to_gather)
 
     end if
 
