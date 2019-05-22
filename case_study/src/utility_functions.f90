@@ -176,7 +176,7 @@ module utility_functions
         if (exist) then
 
             open(unit=55, file='run_times.dat', status='old', position='append')
-            write(*,*) "P, Iterations, IO Time, Iteration time, Time per iteration, Gather time"
+            write(55,'(A)') "P, Iterations, IO Time, Iteration time, Time per iteration, Gather time"
 
         else
 
