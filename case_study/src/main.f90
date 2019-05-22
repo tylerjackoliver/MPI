@@ -51,6 +51,11 @@ program main
     double precision                    :: time_start
     double precision                    :: time_finish
 
+    double precision                    :: time_io
+    double precision                    :: time_iterating
+    double precision                    :: time_per_iteration
+    double precision                    :: time_to_gather
+    
     !
     ! Execute program
     !
@@ -78,6 +83,13 @@ program main
     !                       Set rank = 0.
     !                       Set all other variables = -1.
     !
+
+    ! Modified 22/5
+    !
+    ! So that we can set P properly in batch runs, the program has been modified to take P in as a command-line argument.
+    !
+
+    call get_command_argument(0, P)
 
     call initialise(pool_size, rank, nbrs, dims, cart_comm)
 
