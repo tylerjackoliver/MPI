@@ -478,55 +478,39 @@ module wrappers_2d
 
         ! Send right
 
-!        call MPI_Issend(old(Mp, 1), 1, v_halo_type, nbrs(right),  0, cart_comm, request(1), ierr)
+        call MPI_Issend(old(Mp, 1), 1, v_halo_type, nbrs(right),  0, cart_comm, request(1), ierr)
         
-        ! Send right, receive from the left
-
-        call MPI_SENDRECV(old(Mp, 1), 1, v_halo_type, nbrs(right), 0, old(0,1), 1, v_halo_type, nbrs(left), 0, cart_comm, stat, ierr)
-
         ! Send left
 
-!        call MPI_Issend(old(1, 1),  1, v_halo_type, nbrs(left),   0, cart_comm, request(3), ierr)
+        call MPI_Issend(old(1, 1),  1, v_halo_type, nbrs(left),   0, cart_comm, request(3), ierr)
         
-        ! Send left, receive from the right
-
-        call MPI_SENDRECV(old(1,1), 1, v_halo_type, nbrs(left), 1, old(Mp+1,1), 1, v_halo_type, nbrs(right), 1, cart_comm, stat, ierr)
-
         ! Send down
 
- !       call MPI_Issend(old(1, 1),  1, h_halo_type, nbrs(down),   0, cart_comm, request(7), ierr)
+        call MPI_Issend(old(1, 1),  1, h_halo_type, nbrs(down),   0, cart_comm, request(7), ierr)
         
-        ! Send down, receive from up
-
-      call MPI_SENDRECV(old(1, Np), 1, h_halo_type, nbrs(down), 2, old(1, Np+1), 1, h_halo_type, nbrs(up), 2, cart_comm, stat, ierr)
-
         ! Send up
 
-!        call MPI_Issend(old(1, Np), 1, h_halo_type, nbrs(up),     0, cart_comm, request(5), ierr)
+        call MPI_Issend(old(1, Np), 1, h_halo_type, nbrs(up),     0, cart_comm, request(5), ierr)
 
-        ! Send up, receive from down
-
-        call MPI_SENDRECV(old(1, Np), 1, h_halo_type, nbrs(up), 3, old(1,0), 1, h_halo_type, nbrs(down), 3, cart_comm, stat, ierr)
-        
         ! Receive from right
 
- !       call MPI_Irecv(old(Mp+1, 1), 1, v_halo_type, nbrs(right), 0, cart_comm, request(4), ierr)
+        call MPI_Irecv(old(Mp+1, 1), 1, v_halo_type, nbrs(right), 0, cart_comm, request(4), ierr)
         
         ! Receive from left
         
- !       call MPI_Irecv(old(0, 1),    1, v_halo_type, nbrs(left),  0, cart_comm, request(2), ierr)
+        call MPI_Irecv(old(0, 1),    1, v_halo_type, nbrs(left),  0, cart_comm, request(2), ierr)
        
         ! Receive from below
 
-!        call MPI_Irecv(old(1, 0),    1, h_halo_type, nbrs(down),  0, cart_comm, request(6), ierr)
+        call MPI_Irecv(old(1, 0),    1, h_halo_type, nbrs(down),  0, cart_comm, request(6), ierr)
         
         ! Receive from above
         
-!        call MPI_Irecv(old(1, Np+1), 1, h_halo_type, nbrs(up),    0, cart_comm, request(8), ierr)
+        call MPI_Irecv(old(1, Np+1), 1, h_halo_type, nbrs(up),    0, cart_comm, request(8), ierr)
         
         ! Wait for all the transfers to complete
 
- !       call MPI_Waitall(8, request, stats, ierr)
+        call MPI_Waitall(8, request, stats, ierr)
 
     end subroutine mpi_send_halos
 
