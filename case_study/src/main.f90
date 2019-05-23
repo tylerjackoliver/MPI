@@ -79,6 +79,15 @@ program main
 
 #endif
 
+    ! Modified 22/5
+    !
+    ! So that we can set P properly in batch runs, the program has been modified to take P in as a command-line argument.
+    !
+
+    call get_command_argument(1, P_char)
+        
+    read(P_char, '(I4)') P
+
     !
     ! In parallel runtimes: initialise MPI, cartesian topology (2D), get the rank and size of the new pool.
     !                       Get arrangement of processors in the new topology(dims) and their communicator (cart_comm)
@@ -88,15 +97,6 @@ program main
     !                       Set rank = 0.
     !                       Set all other variables = -1.
     !
-
-    ! Modified 22/5
-    !
-    ! So that we can set P properly in batch runs, the program has been modified to take P in as a command-line argument.
-    !
-
-    call get_command_argument(1, P_char)
-    
-    read(P_char, '(I4)') P
 
     call initialise(pool_size, rank, nbrs, dims, cart_comm)
 
