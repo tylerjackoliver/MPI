@@ -15,7 +15,7 @@ program main
 
 #elif SERIAL 
 
-    use mpi,    only :: mpi_wtime
+    use mpi,    only : mpi_wtime
     use serial
 
 #endif
@@ -125,8 +125,8 @@ program main
     call MPI_BARRIER(MPI_COMM_WORLD, ierr)
 #endif    
 
-time_start = mpi_wtime()
-
+    time_start = mpi_wtime()
+    
     if (rank .eq. 0) then
 
         call pgmread(fname, masterbuf)
@@ -280,11 +280,12 @@ time_start = mpi_wtime()
     end if
 
     ! Deallocate variables used in all cases of the program.
-
+    
     deallocate(new)
     deallocate(edge)
     deallocate(old)
     deallocate(buf)
+    deallocate(masterbuf)
 
     ! Deallocate variables used only in the parallel cases.
 

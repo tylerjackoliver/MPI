@@ -1,6 +1,8 @@
 module serial
 
     use problem_constants
+    use utility_functions
+    use pgmio
 
     implicit none
 
@@ -9,12 +11,21 @@ module serial
     integer                             :: Mp                       ! Horizontal chunk per processor
     integer                             :: Np                       ! Vertical chunk per processor
 
+    integer                             :: ierr                     ! Spoofed MPI ierr
+
     !
     ! Spoofed MPI variable initialisations
     !
 
     integer                             :: rank                     ! Processor rank
     integer                             :: pool_size                ! Size of the worker pool
+
+    integer                             :: cart_comm                ! Spoofed cartesian communicator
+
+    double precision                    :: average                  ! Average value of array
+
+    integer, allocatable                :: nbrs(:)                  ! Spoofed nbrs array
+    integer, allocatable                :: dims(:)                  ! Spoofed dims array
 
     contains
 
@@ -28,13 +39,18 @@ module serial
             ! Unused, spoofed variables are given a value of -1.
             !
 
-            integer,               intent(out) :: pool_size
-            integer,               intent(out) :: rank
+            integer,               intent(out)      :: pool_size
+            integer,               intent(out)      :: rank
 
             integer, dimension(:), intent(inout)    :: nbrs
             integer, dimension(:), intent(inout)    :: dims
     
             integer,               intent(out)      :: cart_comm
+
+            ! So that we can use mpi_wtime(), we still have to initialise
+            ! MPI
+
+            call MPI_INIT(ierr)
 
             ! Spoof the MPI variables
             
@@ -51,6 +67,7 @@ module serial
             cart_comm = -1
 
             call util_print_welcomemessage(rank)
+
 
         end subroutine initialise 
 
@@ -157,6 +174,59 @@ module serial
             to_recv = to_send
     
         end subroutine gather_data
+
+
+        subroutine finalise()
+
+            ! Placeholder subroutine to allow this function to be called in 
+            ! all versions of the source code; nothing actually happens!
+
+            integer :: ierr
+
+            print *, "Here"
+            call MPI_FINALIZE(ierr)
+            print *, "Here"
+
+        end subroutine finalise
+
+
+        subroutine util_printfinish(num_iters, time_start, time_finish, rank)
+
+            !
+            ! util_printfinish prints a message to stdout that gives the total time of the computation.
+            !
+            ! Inputs
+            ! ~~~~~~
+            ! num_iters: Number of iterations performed. Type: integer.
+            ! time_start: CPU time at the start of the computation. Type: double precision.
+            ! time_finish: CPU time at the end of the computation. Type: double precision.
+            ! rank: Rank of the processor calling the function. Type: integer.
+            !
+
+            integer,            intent(in)  :: num_iters
+
+            double precision,   intent(in)  :: time_start
+            double precision,   intent(in)  :: time_finish
+
+            integer,            intent(in)  :: rank
+
+            integer                         :: ierr
+
+            if (num_iters .eq. max_iters) then
+
+                error stop "Maximum number of iterations reached. Stopping..."
+
+            end if
+
+            if (rank .eq. 0) then
+
+                print '(A)',          "  ****************************************************************"
+                print '(A, F8.4, A)', "             Finished computing in ", time_finish - time_start, " seconds."
+                print '(A)',          "  ****************************************************************"
+
+            end if
+
+        end subroutine util_printfinish
 
 
 end module serial
