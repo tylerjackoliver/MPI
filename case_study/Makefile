@@ -5,7 +5,7 @@ SRC_DIRS ?= ./src
 
 # Runtime option (Parallel1d, Parallel2d, serial)
 
-RUNTIME=PARALLEL2d
+RUNTIME=SERIAL
 
 # Macros for CC
 FC = mpif90
