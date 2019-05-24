@@ -11,8 +11,6 @@ module serial
     integer                             :: Mp                       ! Horizontal chunk per processor
     integer                             :: Np                       ! Vertical chunk per processor
 
-    integer                             :: ierr                     ! Spoofed MPI ierr
-
     !
     ! Spoofed MPI variable initialisations
     !
@@ -170,7 +168,9 @@ module serial
             double precision, dimension(:,:), intent(out)       :: to_recv
     
             integer,                          intent(in)        :: comm
-    
+   
+            ! Not using comm will throw a warning.
+
             to_recv = to_send
     
         end subroutine gather_data
@@ -183,9 +183,6 @@ module serial
 
             integer :: ierr
 
-            print *, "Here"
-            call MPI_FINALIZE(ierr)
-            print *, "Here"
 
         end subroutine finalise
 
