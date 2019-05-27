@@ -274,7 +274,7 @@ program main
 
     if (rank .eq. 0) then
 
-        call pgmwrite('write_192x128.pgm', masterbuf)
+        call pgmwrite('output.pgm', masterbuf)
         call util_write_results(num_iters, time_io, time_iterating, time_to_gather)
 
     end if
