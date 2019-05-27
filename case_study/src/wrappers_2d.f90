@@ -8,12 +8,17 @@ module wrappers_2d
     use neighbour_indexes                                           ! Provides standard nbrs array indices
     use pgmio                                                       ! Provides IO routines for PGM files
 
+    use, intrinsic :: iso_fortran_env, only : std_err => error_unit ! Standardises stderr for F03-compatible compilers
+
     implicit none
 
     PUBLIC
 
     integer                             :: Mp                       ! Horizontal chunk per processor
     integer                             :: Np                       ! Vertical chunk per processor
+
+    integer                             :: M_actual                 ! Actual width of the image: used to test image width = M
+    integer                             :: N_actual                 ! Actual height of the image: used to test image height=N
 
     !
     ! MPI variable initialisation
@@ -273,7 +278,34 @@ module wrappers_2d
         if (pool_size .ne. P) then
 
             call MPI_FINALIZE(ierr)
+            
+            ! Print warning message to stderr
+            
+            write(std_err, *) "Incorrect number of processors specified."
+
+            ! Stop runtime execution
+
             error stop "Incorrect number of processors specified."
+
+        end if
+
+        ! Check that we have the correct image size
+
+        call pgmsize(fname, M_actual, N_actual)
+
+        if (M_actual .ne. M .or. N_actual .ne. N) then
+
+            ! Finalise MPI
+            
+            call MPI_FINALIZE(ierr)
+
+            ! Print message to stderr
+
+            write(std_err, *) "Incorrect image size specified."
+
+            ! Stop runtime execution
+
+            error stop "Incorrect image size specified."
 
         end if
 
@@ -397,7 +429,10 @@ module wrappers_2d
         if ( (mod(M, dims(1)) .ne. 0) .or. (mod(N, dims(2)) .ne. 0) ) then
 
             call MPI_FINALIZE(ierr)
-            print *, "Error: M or N is not divisible by the number of dimensions."
+            
+            ! Write message to stderr
+            
+            write(std_err, *) "Error: M or N is not divisible by the number of dimensions."
             error stop "Error: M or N is not divisible by the number of dimensions."
 
         end if
@@ -473,8 +508,6 @@ module wrappers_2d
 
         integer                                             :: ierr
         integer, dimension(MPI_STATUS_SIZE,8)               :: stats
-
-        integer, dimension(MPI_STATUS_SIZE)                 :: stat
 
         ! Send right
 
@@ -689,6 +722,11 @@ module wrappers_2d
         if (num_iters .eq. max_iters) then
 
             call MPI_FINALIZE(ierr)
+
+            ! Write to standard error
+
+            write(std_err, *) "Maximum number of iterations reached."
+
             error stop "Maximum number of iterations reached. Stopping..."
         
         end if

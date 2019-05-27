@@ -22,3 +22,9 @@ P, Iterations, IO Time, Iteration time, Time per iteration, Gather time
   0  1301 0.270419412.2150090 0.0093889 0.0010531
 P, Iterations, IO Time, Iteration time, Time per iteration, Gather time
   0  1301 0.239673612.9644055 0.0099650 0.0012708
+P, Iterations, IO Time, Iteration time, Time per iteration, Gather time
+  0  1301 0.1518068 6.3522351 0.0048826 0.0007827
+P, Iterations, IO Time, Iteration time, Time per iteration, Gather time
+  4  1301 0.1470642 2.1005440 0.0016146 0.0009761
+P, Iterations, IO Time, Iteration time, Time per iteration, Gather time
+  2  1301 0.1445456 3.0429585 0.0023389 0.0010729

@@ -3,9 +3,9 @@ TARGET_EXEC ?= edge_to_image
 OBJ_DIR ?= ./objects
 SRC_DIRS ?= ./src
 
-# Runtime option (Parallel1d, Parallel2d, serial)
+# Runtime option (PARALLEL2d, SERIAL)
 
-RUNTIME=SERIAL
+RUNTIME=PARALLEL2d
 
 # Macros for CC
 FC = mpif90

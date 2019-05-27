@@ -1,8 +1,9 @@
 module serial
 
-    use problem_constants
-    use utility_functions
-    use pgmio
+    use problem_constants                                           ! Problem set-up
+    use utility_functions                                           ! Non-MPI utility routines
+    use pgmio                                                       ! PGM I/O
+    use, intrinsic :: iso_fortran_env, only: std_err => error_unit  ! Get portable versions of stderr
 
     implicit none
 
@@ -10,6 +11,9 @@ module serial
 
     integer                             :: Mp                       ! Horizontal chunk per processor
     integer                             :: Np                       ! Vertical chunk per processor
+
+    integer                             :: M_actual                 ! Actual image width: used for testing we have width = M
+    integer                             :: N_actual                 ! Actual image height: used for testing we have height = N
 
     !
     ! Spoofed MPI variable initialisations
@@ -24,6 +28,8 @@ module serial
 
     integer, allocatable                :: nbrs(:)                  ! Spoofed nbrs array
     integer, allocatable                :: dims(:)                  ! Spoofed dims array
+
+    integer                             :: ierr                     ! Spoofed ierr: we have to use MPI to get wtime()
 
     contains
 
@@ -54,6 +60,20 @@ module serial
             
             pool_size = -1;
             rank = 0;
+
+            ! Check that the image is the size we expect
+
+            call pgmsize(fname, M_actual, N_actual)
+
+            if (M_actual .ne. M .or. N_actual .ne. N) then
+
+                ! Write error message to stderr
+
+                write(std_err, *) "Incorrect image size specified."
+
+                error stop "Incorrect image size specified."
+
+            end if
 
             ! Set the image chunks to be just the image itself
 
@@ -181,9 +201,6 @@ module serial
             ! Placeholder subroutine to allow this function to be called in 
             ! all versions of the source code; nothing actually happens!
 
-            integer :: ierr
-
-
         end subroutine finalise
 
 
@@ -207,9 +224,11 @@ module serial
 
             integer,            intent(in)  :: rank
 
-            integer                         :: ierr
-
             if (num_iters .eq. max_iters) then
+
+                ! Print a message to stderr
+
+                write(std_err, *) "Maximum number of iterations reached."
 
                 error stop "Maximum number of iterations reached. Stopping..."
 
