@@ -29,7 +29,7 @@ When compiling the serial version, compiler warnings for dummy variables will be
 
 To run the serial version of the file, type the following at your shell of choice:
 
-`./edge\_to\_image`
+`./edge_to_image 1`
 
 ### Parallel Version
 
