@@ -19,6 +19,8 @@ module serial
     ! Spoofed MPI variable initialisations
     !
 
+    integer                             :: P                        ! Spoofed pool size
+
     integer                             :: rank                     ! Processor rank
     integer                             :: pool_size                ! Size of the worker pool
 

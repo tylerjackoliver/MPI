@@ -40,6 +40,11 @@ module wrappers_2d
     ! Cartesian topology
     !
 
+    integer, parameter                  :: num_dims = 2             ! Number of dimensions of the topology
+    integer, parameter                  :: nbrs_len = 4             ! Length of the neighbours array: 2 * num_dims
+
+    integer                             :: P                        ! Size of the worker pool
+
     integer, allocatable                :: dims(:)                  ! Array holding topology dimensions: 2 * num_dims
     integer, allocatable                :: nbrs(:)                  ! Array for addresses of neighbours: 2 * dims
     integer, allocatable                :: counts(:)                ! Array to hold the number of elements for the resized subarray

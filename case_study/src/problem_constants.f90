@@ -4,9 +4,6 @@ module problem_constants
 
     PUBLIC
 
-    integer,            parameter :: num_dims           = 2                     ! Number of dimensions to compute - must match compilation flag
-    integer,            parameter :: nbrs_len           = 4                     ! Must be twice nbrs_len
-    integer                       :: P
     integer,            parameter :: M                  = 256                   ! Width of image, pixels
     integer,            parameter :: N                  = 192                   ! Height of image, pixels
     integer,            parameter :: max_iters          = 10000                 ! Maximum number of iterations

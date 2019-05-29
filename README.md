@@ -2,13 +2,30 @@
 
 The program included here performs a two-dimensional image recomposition from a target `.pgm` file, and continues with the re-construction until convergence to within a user-defined tolerance is achieved.
 
+## Configuring the Program
+
+The configuration of the program is performed by editing the `src/problem_constants.f90` source file to suit requirements:
+
+* `M` is the width of the image, in pixels.
+* `N` is the height of the image, in pixels.
+* `max_iters` is the maximum number of iterations the algorithm will perform before ending iteration.
+* `check_int` is the number of iterations between checking the convergence of the algorithm. 100 is recommended, and in general the choice of this parameter is a trade-off.
+* `stopping_criterion` is the tolerance of the stopping criterion; should the difference between the two previous iterations reduce below this value, then the iteration completes.
+* `fname` is the filename of the .pgm file to be read in.
+
+By default, the program will write to the file `output.pgm`.
+
+## Program Compilation
+
 This program has two main modes of operation: a serial run-time, and a parallel run-time. The compilation of the correct mode of operation is achieved using a compiler flag, set in the respective Makefile.
 
-Two make-files are provided with the source code: to compile using mpif90 on a generic machine, use the Makefile in the case\_study/ directory. To compile using ftn on ARCHER, use the Makefile in the case\_study/src/ directory. Different Makefiles were generated to navigate some of the intricacies behind the Cray compiler.
+Two make-files are provided with the source code: to compile using mpif90 on a generic machine, use the Makefile in the `case_study/` directory. To compile using ftn on ARCHER, use the Makefile in the `case_study/src/` directory. Different Makefiles were generated to navigate some of the intricacies behind the Cray compiler.
 
 ### Serial Version
 
 To compile in serial, edit the Makefile in either directory, such that the RUNTIME flag is set to SERIAL. By doing so, the serial wrapping library (src/serial.f90) will be loaded, and much of the MPI functionality removed. However, the MPI library will still initialise, so as to be able to use the `MPI_WTIME()` function for performance monitoring purposes.
+
+When compiling the serial version, compiler warnings for dummy variables will be reported. This is to be expected, and is a result of the dummy variables in the serial subroutines designed to spoof the signatures of the parallel wrappers.
 
 To run the serial version of the file, type the following at your shell of choice:
 
